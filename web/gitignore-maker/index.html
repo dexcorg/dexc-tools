@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>.gitignore 生成器</title>
+  <!-- Bootstrap 5 + Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    #tree-search-input { width: 220px; }
+    .search-hit { background-color: #fff3cd !important; outline: 2px solid #ffc107; }
+    #tree-search .btn { line-height: 1; padding-top: .15rem; padding-bottom: .15rem; }
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+    <!-- 头部 -->
+    <header class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+<div class="d-flex align-items-center gap-2">
+        <h1 class="h3 mb-0">
+          <i class="fas fa-file-code text-primary me-3"></i>
+          <span data-i18n="title">.gitignore 生成器</span>
+        </h1>
+        <small>
+          <span class="badge bg-secondary align-middle">1.0</span>
+        </small>
+      </div>
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fas fa-globe me-1"></i>
+          <span id="lang-label">中文</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="#" data-lang="zh-CN">中文</a></li>
+          <li><a class="dropdown-item" href="#" data-lang="en">English</a></li>
+        </ul>
+      </div>
+    </header>
+
+    <!-- 主区域：左右布局 -->
+    <div class="row g-0">
+      <!-- 左列：模板树 -->
+      <div class="col-md-7 mb-3 mb-md-0">
+        <div class="card shadow-sm h-100 me-md-3">
+          <div class="card-header d-flex align-items-center">
+            <i class="fas fa-folder-tree me-1 text-secondary"></i>
+            <span data-i18n="tree_title">模板列表</span>
+            <div class="ms-auto d-flex align-items-center gap-1" id="tree-search">
+              <input type="search" class="form-control form-control-sm" id="tree-search-input" autocomplete="off" />
+              <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="search-prev" aria-label="search_prev" title="search_prev" data-i18n-attr="aria-label,title"><i class="fas fa-arrow-up"></i></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="search-next" aria-label="search_next" title="search_next" data-i18n-attr="aria-label,title"><i class="fas fa-arrow-down"></i></button>
+              <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="search-clear" aria-label="search_clear" title="search_clear" data-i18n-attr="aria-label,title"><i class="fas fa-times"></i></button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="list-group list-group-flush" id="template-list" style="max-height:60vh; overflow-y:auto;">
+              <!-- 动态渲染 -->
+            </div>
+            <div id="empty-message" class="text-center text-muted py-4 d-none">
+              <i class="fas fa-inbox fa-2x d-block mb-2"></i>
+              <span data-i18n="no_templates">暂无模板</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右列：已选模板列表 + 生成按钮 -->
+      <div class="col-md-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <i class="fas fa-list-ul me-1 text-secondary"></i>
+            <span data-i18n="selected_title">已选模板</span>
+            <span class="badge bg-secondary float-end" id="selected-count">
+              <span data-i18n="selected_count">0</span>
+            </span>
+          </div>
+          <div class="card-body p-0">
+            <div class="list-group list-group-flush" id="selected-list" style="max-height:60vh; overflow-y:auto;">
+              <!-- 动态渲染 -->
+            </div>
+            <div id="selected-empty" class="text-center text-muted py-4 d-none">
+              <i class="fas fa-folder-open fa-2x d-block mb-2"></i>
+              <span data-i18n="no_selected">尚未选择模板</span>
+            </div>
+          </div>
+          <div class="card-footer d-flex justify-content-end">
+            <button class="btn btn-primary" id="generate-btn" disabled>
+              <i class="fas fa-download me-1"></i>
+              <span data-i18n="generate">生成并下载 .gitignore</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 说明区块 -->
+      <div class="card shadow-sm mt-4">
+        <div class="card-body py-3">
+          <div class="row g-2">
+            <div class="col-md-5">
+              <h6 class="card-subtitle text-secondary mb-1">
+                <i class="fas fa-database me-1"></i><span data-i18n="info_source_title">数据来源</span>
+              </h6>
+              <p class="card-text mb-0 small" data-i18n="info_source">
+                数据来源于 <a href="https://github.com/github/gitignore" target="_blank">github/gitignore</a>，纯前端实现，无后端请求。
+              </p>
+            </div>
+            <div class="col-md-7">
+              <h6 class="card-subtitle text-secondary mb-1">
+                <i class="fas fa-question-circle me-1"></i><span data-i18n="info_usage_title">使用方法</span>
+              </h6>
+              <p class="card-text mb-0 small" data-i18n="info_usage">
+                点击左侧文件将其加入右侧已选列表（再次点击或点击右侧 × 可移除）。下载的文件名为 <code>git.gitignore</code>，请删除文件名中的 <code>git</code> 前缀后改名为 <code>.gitignore</code> 使用。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" id="toast-container"></div>
+
+  <!-- 失败确认 Modal -->
+  <div class="modal fade" id="fail-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i><span data-i18n="fail_title">部分模板获取失败</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p data-i18n="fail_desc">以下模板未能成功获取，确认后将跳过它们继续生成：</p>
+          <ul class="list-unstyled mb-0" id="fail-list" style="max-height:40vh; overflow-y:auto;">
+            <!-- 动态渲染 -->
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="cancel">取消</button>
+          <button type="button" class="btn btn-primary" id="confirm-fail-btn" data-i18n="confirm">确认生成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function() {
+      'use strict';
+
+      // ===================== 状态 =====================
+      let currentLang = 'zh-CN';
+      let i18n = {};                // 当前语言的翻译资源（动态加载）
+      let treeData = [];            // 嵌套树节点数组
+      let selectedTemplates = [];   // 选中模板的 path，顺序 = 右侧 List Group 顺序
+      let pendingResults = [];      // 生成确认弹窗暂存的成功结果
+      let loadingToast = null;      // 加载中 Toast，用于结束后关闭
+      let fileElMap = new Map();    // path -> 左侧文件按钮，选中/取消时局部更新样式
+      let flatNodes = [];           // 扁平节点索引，用于搜索
+      let searchQuery = '';         // 当前搜索关键字
+      let searchMatches = [];       // 匹配的节点 path 列表
+      let searchIndex = 0;          // 当前匹配下标
+
+      // DOM 引用
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+
+      const templateList = $('#template-list');
+      const emptyMsg = $('#empty-message');
+      const selectedList = $('#selected-list');
+      const selectedEmpty = $('#selected-empty');
+      const selectedCountEl = $('#selected-count');
+      const generateBtn = $('#generate-btn');
+      const langLabel = $('#lang-label');
+      const langItems = $$('.dropdown-item[data-lang]');
+      const searchInput = $('#tree-search-input');
+      const searchPrevBtn = $('#search-prev');
+      const searchNextBtn = $('#search-next');
+      const searchClearBtn = $('#search-clear');
+
+      // ===================== 工具函数 =====================
+      function t(key, params) {
+        let str = i18n?.[key] || key;
+        if (params) {
+          for (const [k, v] of Object.entries(params)) {
+            str = str.replace(`{${k}}`, v);
+          }
+        }
+        return str;
+      }
+
+      function updateAllI18n() {
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+          const key = el.getAttribute('data-i18n');
+          el.innerHTML = t(key);
+        });
+        document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+          const attrs = el.getAttribute('data-i18n-attr').split(',');
+          attrs.forEach(attr => {
+            const key = el.getAttribute(attr);
+            el.setAttribute(attr, t(key));
+          });
+        });
+        searchInput.placeholder = t('search_placeholder');
+        langLabel.textContent = currentLang === 'en' ? 'English' : '中文';
+        document.documentElement.lang = currentLang;
+        updateSelectedCount();
+        document.title = t('title');
+      }
+
+      async function loadI18n(lang, { silent = false } = {}) {
+        try {
+          const resp = await fetch(`i18n/${lang}.json`);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          i18n = await resp.json();
+          currentLang = lang;
+          updateAllI18n();
+          return true;
+        } catch (err) {
+          console.error('加载 i18n 失败:', err);
+          if (!silent) showToast(t('load_failed'), { type: 'danger', autohide: true, delay: 5000 });
+          return false;
+        }
+      }
+
+      function updateSelectedCount() {
+        const count = selectedTemplates.length;
+        const span = selectedCountEl.querySelector('span[data-i18n]');
+        if (span) span.textContent = t('selected_count', { count });
+        generateBtn.disabled = (count === 0);
+      }
+
+      function showToast(message, options = {}) {
+        const { type = 'info', autohide = true, delay = 3000, capture = false } = options;
+        const icons = { info: 'fa-info-circle', success: 'fa-check-circle', danger: 'fa-exclamation-triangle' };
+        const bg = type === 'success' ? 'text-bg-success' : type === 'danger' ? 'text-bg-danger' : 'text-bg-primary';
+        const el = document.createElement('div');
+        el.className = `toast align-items-center text-white ${bg}`;
+        el.setAttribute('role', 'alert');
+        el.innerHTML = `<div class="d-flex">
+          <div class="toast-body"><i class="fas ${icons[type] || icons.info} me-2"></i>${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>`;
+        $('#toast-container').appendChild(el);
+        const toast = new bootstrap.Toast(el, { autohide, delay });
+        toast.show();
+        if (capture) loadingToast = toast;
+        el.addEventListener('hidden.bs.toast', () => el.remove());
+        return toast;
+      }
+
+      function pad(n) {
+        return String(n).padStart(2, '0');
+      }
+
+      function formatNow() {
+        const d = new Date();
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+
+      // ===================== 数据获取 =====================
+      function buildTreeFromPaths(paths) {
+        const root = [];
+        const nodeMap = new Map();
+
+        const getDir = (path, depth) => {
+          if (nodeMap.has(path)) return nodeMap.get(path);
+          const dot = path.lastIndexOf('/');
+          const name = dot >= 0 ? path.slice(dot + 1) : path;
+          const node = { name, path, type: 'dir', depth, children: [] };
+          nodeMap.set(path, node);
+          if (dot >= 0) {
+            const parentPath = path.slice(0, dot);
+            const parent = getDir(parentPath, depth - 1);
+            parent.children.push(node);
+          } else {
+            root.push(node);
+          }
+          return node;
+        };
+
+        paths.forEach(p => {
+          const parts = p.split('/');
+          if (parts.length === 1) {
+            root.push({ name: parts[0], path: p, type: 'file', depth: 0 });
+            return;
+          }
+          const dirs = parts.slice(0, -1).reduce((acc, _, i, arr) => {
+            acc.push(arr.slice(0, i + 1).join('/'));
+            return acc;
+          }, []);
+          const dirPath = dirs[dirs.length - 1];
+          const parent = getDir(dirPath, dirs.length - 1);
+          parent.children.push({
+            name: parts[parts.length - 1],
+            path: p,
+            type: 'file',
+            depth: dirs.length
+          });
+        });
+
+        // 排序并清理空目录
+        const prune = (nodes) => {
+          nodes.forEach(n => {
+            if (n.type === 'dir') {
+              n.children = prune(n.children);
+            }
+          });
+          // 目录仅保留含文件/含文件的子目录
+          const keepDir = n => n.type === 'file' || (n.type === 'dir' && n.children.length > 0);
+          nodes = nodes.filter(keepDir);
+          nodes.sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+          });
+          return nodes;
+        };
+
+        return prune(root);
+      }
+
+      async function loadTemplates() {
+        if (loadingToast) loadingToast.hide();
+        showToast(t('loading'), { type: 'info', autohide: false, capture: true });
+
+        try {
+          const resp = await fetch('https://api.github.com/repos/github/gitignore/git/trees/main?recursive=1');
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+
+          const paths = (data.tree || [])
+            .filter(item => item.type === 'blob' && item.path.toLowerCase().endsWith('.gitignore'))
+            .map(item => item.path);
+
+          treeData = buildTreeFromPaths(paths);
+
+          if (loadingToast) loadingToast.hide();
+          emptyMsg.classList.toggle('d-none', treeData.length > 0);
+          renderTree();
+          updateSelectedCount();
+          showToast(t('loaded'), { type: 'success' });
+        } catch (err) {
+          console.error(err);
+          if (loadingToast) loadingToast.hide();
+          treeData = [];
+          emptyMsg.classList.remove('d-none');
+          renderTree();
+          showToast(t('load_failed'), { type: 'danger', autohide: true, delay: 5000 });
+        }
+      }
+
+      // ===================== 渲染 =====================
+      function sanitizePath(path) {
+        return path.replace(/[^a-zA-Z0-9]/g, '_');
+      }
+
+      function renderTree() {
+        templateList.innerHTML = '';
+        fileElMap.clear();
+        flatNodes = [];
+        if (treeData.length === 0) return;
+
+        const fragment = document.createDocumentFragment();
+
+        const renderNodes = (nodes, container, parentId) => {
+          nodes.forEach((node, idx) => {
+            if (node.type === 'dir') {
+              const item = document.createElement('div');
+              item.className = 'list-group-item list-group-item-action p-0';
+
+              const level = node.depth;
+              const collapseId = `c-${sanitizePath(node.path)}`;
+              const pad = Array(level * 3).fill('').join('&#8199;');
+
+              const head = document.createElement('button');
+              head.className = 'btn btn-link text-decoration-none d-flex align-items-center w-100 text-body';
+              head.setAttribute('data-bs-toggle', 'collapse');
+              head.setAttribute('data-bs-target', `#${collapseId}`);
+              head.setAttribute('aria-expanded', 'false');
+              head.innerHTML = `${pad}<i class="fas fa-chevron-right chev-ref me-1"></i><i class="fas fa-folder me-1 text-warning"></i>${escapeHtml(node.name)}`;
+              item.appendChild(head);
+
+              const children = document.createElement('div');
+              children.id = collapseId;
+              children.className = 'collapse';
+
+              renderNodes(node.children, children, collapseId);
+
+              container.appendChild(item);
+              container.appendChild(children);
+
+              flatNodes.push({ path: node.path, name: node.name, type: 'dir', el: head });
+
+              children.addEventListener('shown.bs.collapse', () => {
+                head.setAttribute('aria-expanded', 'true');
+                head.querySelector('.chev-ref').className = 'fas fa-chevron-down chev-ref me-1';
+              });
+              children.addEventListener('hidden.bs.collapse', () => {
+                head.setAttribute('aria-expanded', 'false');
+                head.querySelector('.chev-ref').className = 'fas fa-chevron-right chev-ref me-1';
+              });
+            } else {
+              const item = document.createElement('button');
+              item.type = 'button';
+              item.className = 'list-group-item list-group-item-action text-start';
+              if (selectedTemplates.includes(node.path)) item.classList.add('active');
+
+              const pad = Array(node.depth * 3).fill('').join('&#8199;');
+              const check = selectedTemplates.includes(node.path) ? '' : 'd-none';
+              item.innerHTML = `${pad}<i class="fas fa-file me-1 text-secondary"></i>${escapeHtml(node.name)}<i class="fas fa-check text-white ms-auto float-end ${check}"></i>`;
+
+              fileElMap.set(node.path, item);
+              flatNodes.push({ path: node.path, name: node.name, type: 'file', el: item });
+              item.addEventListener('click', () => toggleTemplate(node.path));
+
+              container.appendChild(item);
+            }
+          });
+        };
+
+        renderNodes(treeData, fragment, null);
+        templateList.appendChild(fragment);
+
+        // 重渲染后恢复搜索状态
+        if (searchQuery) {
+          runSearch(searchQuery);
+        } else {
+          clearSearchUI();
+        }
+      }
+
+      // ===================== 搜索定位 =====================
+      function runSearch(query) {
+        searchQuery = query.trim().toLowerCase();
+        const q = searchQuery;
+        if (!q) {
+          clearSearchUI();
+          return;
+        }
+        searchMatches = flatNodes
+          .filter(n => n.path.toLowerCase().includes(q) || n.name.toLowerCase().includes(q))
+          .map(n => n.path);
+        searchIndex = 0;
+
+        const hasResults = searchMatches.length > 0;
+        searchPrevBtn.classList.toggle('d-none', !hasResults);
+        searchNextBtn.classList.toggle('d-none', !hasResults);
+        searchClearBtn.classList.remove('d-none');
+
+        clearHighlight();
+        if (hasResults) {
+          locateToPath(searchMatches[0]);
+        } else {
+          showToast(t('search_no_results'), { type: 'info' });
+        }
+      }
+
+      function clearSearchUI() {
+        searchQuery = '';
+        searchMatches = [];
+        searchIndex = 0;
+        searchPrevBtn.classList.add('d-none');
+        searchNextBtn.classList.add('d-none');
+        searchClearBtn.classList.add('d-none');
+        clearHighlight();
+      }
+
+      function clearHighlight() {
+        templateList.querySelectorAll('.search-hit').forEach(el => el.classList.remove('search-hit'));
+      }
+
+      function locateToPath(path) {
+        const node = flatNodes.find(n => n.path === path);
+        if (!node) return;
+
+        // 展开该节点所有祖先目录
+        const parts = node.path.split('/');
+        for (let i = 1; i < parts.length; i++) {
+          const dirPath = parts.slice(0, i).join('/');
+          const dirNode = flatNodes.find(n => n.type === 'dir' && n.path === dirPath);
+          if (dirNode) {
+            const targetId = `c-${sanitizePath(dirPath)}`;
+            const target = document.getElementById(targetId);
+            if (target && !target.classList.contains('show')) {
+              const bsCollapse = bootstrap.Collapse.getOrCreateInstance(target, { toggle: false });
+              bsCollapse.show();
+            }
+          }
+        }
+
+        clearHighlight();
+        node.el.classList.add('search-hit');
+        node.el.scrollIntoView({ block: 'nearest' });
+      }
+
+      function moveSearch(dir) {
+        if (searchMatches.length === 0) return;
+        searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
+        locateToPath(searchMatches[searchIndex]);
+      }
+
+      function bindSearch() {
+        searchInput.addEventListener('input', () => {
+          runSearch(searchInput.value);
+        });
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            moveSearch(e.shiftKey ? -1 : 1);
+          } else if (e.key === 'Escape') {
+            searchInput.value = '';
+            clearSearchUI();
+          }
+        });
+        searchPrevBtn.addEventListener('click', () => moveSearch(-1));
+        searchNextBtn.addEventListener('click', () => moveSearch(1));
+        searchClearBtn.addEventListener('click', () => {
+          searchInput.value = '';
+          clearSearchUI();
+          searchInput.focus();
+        });
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function toggleTemplate(path) {
+        const idx = selectedTemplates.indexOf(path);
+        const nowSelected = idx === -1;
+        if (nowSelected) {
+          selectedTemplates.push(path);
+        } else {
+          selectedTemplates.splice(idx, 1);
+        }
+
+        // 仅局部更新左侧节点样式，避免整树重绘
+        const btn = fileElMap.get(path);
+        if (btn) {
+          btn.classList.toggle('active', nowSelected);
+          const check = btn.querySelector('.fa-check');
+          if (check) check.classList.toggle('d-none', !nowSelected);
+        }
+
+        renderSelectedList();
+        updateSelectedCount();
+      }
+
+      function removeSelected(path) {
+        toggleTemplate(path);
+      }
+
+      function displayName(path) {
+        return path.replace(/\.gitignore$/, '');
+      }
+
+      function renderSelectedList() {
+        selectedList.innerHTML = '';
+        selectedEmpty.classList.toggle('d-none', selectedTemplates.length > 0);
+
+        selectedTemplates.forEach(path => {
+          const li = document.createElement('a');
+          li.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+          li.setAttribute('href', '#');
+
+          const text = document.createElement('span');
+          text.textContent = displayName(path);
+
+          const badge = document.createElement('span');
+          badge.className = 'badge rounded-pill bg-danger';
+          badge.innerHTML = '&times;';
+
+          badge.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            removeSelected(path);
+          });
+
+          li.addEventListener('click', (e) => {
+            e.preventDefault();
+            removeSelected(path);
+          });
+
+          li.appendChild(text);
+          li.appendChild(badge);
+          selectedList.appendChild(li);
+        });
+      }
+
+      // ===================== 生成下载 =====================
+      function triggerDownload() {
+        const dateStr = formatNow();
+        let merged = `# Created at ${dateStr}\n\n`;
+
+        pendingResults.forEach(({ path, content }) => {
+          merged += `# ---------- ${path} ----------\n`;
+          merged += content;
+          if (!content.endsWith('\n')) merged += '\n';
+          merged += '\n';
+        });
+
+        const blob = new Blob([merged], { type: 'text/plain;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'git.gitignore';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+        showToast(t('file_note', { file: 'git.gitignore' }), { type: 'success', autohide: true, delay: 6000 });
+      }
+
+      async function generateAndDownload() {
+        if (selectedTemplates.length === 0) return;
+
+        const genSpan = generateBtn.querySelector('span[data-i18n]');
+        genSpan.textContent = t('generating');
+        generateBtn.disabled = true;
+
+        try {
+          // 按右侧 List Group 顺序（selectedTemplates 顺序）fetch
+          const fetchPromises = selectedTemplates.map(async (path) => {
+            const rawUrl = `https://raw.githubusercontent.com/github/gitignore/main/${path}`;
+            const resp = await fetch(rawUrl);
+            if (!resp.ok) {
+              const err = new Error(`Failed to fetch ${path}`);
+              err.path = path;
+              throw err;
+            }
+            const text = await resp.text();
+            return { path, content: text };
+          });
+
+          const results = await Promise.allSettled(fetchPromises);
+          const successful = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+          const failed = results.filter(r => r.status === 'rejected');
+
+          genSpan.textContent = t('generate');
+          generateBtn.disabled = (selectedTemplates.length === 0);
+
+          if (successful.length === 0) {
+            showToast(t('fail_title'), { type: 'danger', autohide: true, delay: 5000 });
+            return;
+          }
+
+          pendingResults = successful;
+
+          if (failed.length > 0) {
+            const failList = $('#fail-list');
+            failList.innerHTML = '';
+            failed.forEach(r => {
+              const path = r.reason?.path || r.reason?.message || 'unknown';
+              const li = document.createElement('li');
+              li.className = 'd-flex align-items-center text-danger py-1';
+              li.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>`;
+              li.appendChild(document.createTextNode(path));
+              failList.appendChild(li);
+            });
+
+            bootstrap.Modal.getOrCreateInstance($('#fail-modal')).show();
+            return;
+          }
+
+          triggerDownload();
+        } catch (err) {
+          console.error(err);
+          genSpan.textContent = t('generate');
+          generateBtn.disabled = (selectedTemplates.length === 0);
+          showToast(t('fail_title'), { type: 'danger', autohide: true, delay: 5000 });
+        }
+      }
+
+      // ===================== 语言切换 =====================
+      async function setLanguage(lang) {
+        if (lang === currentLang) return;
+        const ok = await loadI18n(lang);
+        if (!ok) return; // 失败保留上次文案
+        renderTree();
+        renderSelectedList();
+      }
+
+      // ===================== 初始化 =====================
+      async function init() {
+        await loadI18n(currentLang, { silent: true });
+
+        langItems.forEach(item => {
+          item.addEventListener('click', (e) => {
+            e.preventDefault();
+            setLanguage(item.getAttribute('data-lang'));
+          });
+        });
+
+        bindSearch();
+        generateBtn.addEventListener('click', generateAndDownload);
+
+        $('#confirm-fail-btn').addEventListener('click', () => {
+          bootstrap.Modal.getOrCreateInstance($('#fail-modal')).hide();
+          triggerDownload();
+        });
+
+        loadTemplates();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+
+    })();
+  </script>
+</body>
+</html>
