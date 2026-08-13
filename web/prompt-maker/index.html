@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>提示生成工具</title>
+  <!-- Bootstrap 5 + Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" />
+  <style>
+    #tree-search .btn {
+      line-height: 1;
+      padding-top: .15rem;
+      padding-bottom: .15rem;
+    }
+    #tree-search-input {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .search-hit {
+      background-color: #fff3cd !important;
+      outline: 2px solid #ffc107;
+    }
+    .tree-container {
+      max-height: 26vh;
+      overflow-y: auto;
+    }
+    .drop-zone {
+      border: 2px dashed #adb5bd;
+      border-radius: .5rem;
+      background: #f8f9fa;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .drop-zone:hover {
+      border-color: #86b7fe;
+      background: #eef5ff;
+    }
+    .drop-zone.dragover {
+      border-color: #0d6efd;
+      background: #e7f1ff;
+    }
+    textarea.form-control {
+      font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+      font-size: .9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container py-4">
+    <!-- 头部 -->
+    <header class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h1 class="h3 mb-0">
+          <i class="fas fa-magic text-primary me-3"></i>
+          <span data-i18n="title">提示生成工具</span>
+        </h1>
+        <span class="badge bg-dark align-middle"><i class="fas fa-tag me-1"></i>1.0</span>
+        <span class="badge bg-info align-middle"><i class="fas fa-lightbulb me-1"></i><span data-i18n="badge_smart_params">智能参数替换</span></span>
+        <span class="badge bg-secondary align-middle"><i class="fas fa-folder-tree me-1"></i><span data-i18n="badge_hierarchy">层级分类</span></span>
+        <span class="badge bg-success align-middle"><i class="fas fa-sliders-h me-1"></i><span data-i18n="badge_dynamic_defaults">动态参数+默认值</span></span>
+      </div>
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="fas fa-globe me-1"></i>
+          <span id="lang-label">中文</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="#" data-lang="zh-CN">中文</a></li>
+          <li><a class="dropdown-item" href="#" data-lang="en">English</a></li>
+        </ul>
+      </div>
+    </header>
+
+    <!-- 主区域：左右布局 -->
+    <div class="row g-0">
+      <!-- 左列：提示词输出 -->
+      <div class="col-md-7 mb-3 mb-md-0">
+        <div class="card shadow-sm h-100 me-md-3">
+          <div class="card-header d-flex align-items-center">
+            <i class="fas fa-rectangle-list me-1 text-secondary"></i>
+            <span data-i18n="output_title">提示词输出</span>
+          </div>
+          <div class="card-body">
+            <textarea id="output-area" class="form-control" style="min-height:60vh;" data-i18n-attr="placeholder"
+                      placeholder="output_placeholder"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右列：词库管理 + 树 + 预览 + 操作 -->
+      <div class="col-md-5">
+        <div class="card shadow-sm h-100">
+          <div class="card-body p-3">
+
+            <!-- 词库上传（支持拖放） -->
+            <div class="mb-3">
+              <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-folder-open text-secondary me-1"></i>
+                <span class="fw-semibold" data-i18n="lib_title">词库文件</span>
+                <div class="ms-auto">
+                  <button class="btn btn-outline-danger btn-sm" type="button" id="clear-lib-btn">
+                    <i class="fas fa-trash-can me-1"></i><span data-i18n="clear_lib">清空</span>
+                  </button>
+                  <button class="btn btn-outline-secondary btn-sm ms-1" type="button"
+                          data-bs-toggle="modal" data-bs-target="#format-modal">
+                    <i class="fas fa-question-circle me-1"></i><span data-i18n="format">格式</span>
+                  </button>
+                </div>
+              </div>
+              <div id="drop-zone" class="drop-zone p-2 text-center" role="button" tabindex="0"
+                   aria-label="drop_zone_aria" data-i18n-attr="aria-label">
+                <p class="mb-0 text-muted small" data-i18n="drop_hint">拖放 .txt/.md 词库文件到此处，或点击选择文件</p>
+              </div>
+              <input type="file" id="dictionary-file" class="d-none"
+                     accept=".md,.txt,text/plain,text/markdown" />
+            </div>
+
+            <!-- 词库树 + 搜索 -->
+            <div class="mb-3">
+              <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-folder-tree text-secondary me-1"></i>
+                <span class="fw-semibold" data-i18n="tree_title">词库索引</span>
+              </div>
+              <div class="d-flex align-items-center gap-1 mb-2" id="tree-search">
+                <input type="search" class="form-control form-control-sm" id="tree-search-input" autocomplete="off" />
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="search-prev"
+                        aria-label="search_prev" title="search_prev" data-i18n-attr="aria-label,title"><i class="fas fa-arrow-up"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="search-next"
+                        aria-label="search_next" title="search_next" data-i18n-attr="aria-label,title"><i class="fas fa-arrow-down"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="search-clear"
+                        aria-label="search_clear" title="search_clear" data-i18n-attr="aria-label,title"><i class="fas fa-times"></i></button>
+              </div>
+              <div class="list-group list-group-flush border rounded tree-container" id="tree-list"></div>
+              <div id="tree-empty" class="text-center text-muted py-4 d-none">
+                <i class="fas fa-inbox fa-2x d-block mb-2"></i>
+                <span data-i18n="tree_empty">暂无词库数据</span>
+              </div>
+            </div>
+
+            <!-- 预览 + 参数 + 添加 -->
+            <div class="mb-3">
+              <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-eye text-secondary me-1"></i>
+                <span class="fw-semibold" data-i18n="preview_title">提示预览</span>
+                <span class="badge bg-light text-dark ms-auto"><i class="fas fa-lock me-1"></i><span data-i18n="preview_readonly">只读</span></span>
+              </div>
+              <textarea id="preview-area" rows="3" class="form-control form-control-sm" readonly
+                        data-i18n-attr="placeholder" placeholder="preview_placeholder"></textarea>
+              <div id="params-container" class="mt-2 p-2 bg-white border rounded small"></div>
+              <button class="btn btn-primary w-100 mt-2" type="button" id="add-prompt-btn" disabled>
+                <i class="fas fa-plus-circle me-1"></i><span data-i18n="add_prompt">添加提示词</span>
+              </button>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="d-flex flex-wrap gap-2 mb-1">
+              <button class="btn btn-secondary flex-fill" type="button" id="restore-output-btn" disabled>
+                <i class="fas fa-sync-alt me-1"></i><span data-i18n="restore_output">还原</span>
+              </button>
+              <button class="btn btn-danger flex-fill" type="button" id="clear-output-btn">
+                <i class="fas fa-trash-can me-1"></i><span data-i18n="clear_output">清空</span>
+              </button>
+              <button class="btn btn-primary flex-fill" type="button" id="copy-output-btn" disabled>
+                <i class="fas fa-clipboard me-1"></i><span data-i18n="copy_output">复制</span>
+              </button>
+              <button class="btn btn-warning flex-fill" type="button" id="copy-clear-btn" disabled>
+                <i class="fas fa-copy me-1"></i><span data-i18n="copy_clear_output">复制并清空</span>
+              </button>
+            </div>
+            <p class="text-muted small mb-0 text-center">
+              <i class="fas fa-info-circle me-1"></i><span data-i18n="usage_hint">上传词库 → 选择标题 → 填写/调整参数（默认值已填充）→ 点击添加</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 说明区块 -->
+      <div class="card shadow-sm mt-4">
+        <div class="card-body py-3">
+          <div class="row g-2">
+            <div class="col-md-5">
+              <h6 class="card-subtitle text-secondary mb-1">
+                <i class="fas fa-database me-1"></i><span data-i18n="info_format_title">词库格式</span>
+              </h6>
+              <p class="card-text mb-0 small" data-i18n="info_format_desc">
+                以 <code>$$分类.标题$$</code> 定义条目，<code>@@参数:默认值@@</code> 为可选参数行，其下非空行为内容，支持 <code>{{参数}}</code> 占位符。
+              </p>
+            </div>
+            <div class="col-md-7">
+              <h6 class="card-subtitle text-secondary mb-1">
+                <i class="fas fa-question-circle me-1"></i><span data-i18n="info_usage_title">使用方法</span>
+              </h6>
+              <p class="card-text mb-0 small" data-i18n="info_usage_desc">
+                上传或拖放词库文件 → 展开树选择提示词 → 调整参数（默认值已填充）→ 添加至输出区；可复制、还原与清空。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 容器 -->
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" id="toast-container"></div>
+
+  <!-- 词库清空确认 Modal -->
+  <div class="modal fade" id="confirm-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i><span data-i18n="confirm_clear_title">清空词库</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="close_aria" data-i18n-attr="aria-label"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0" data-i18n="confirm_clear_desc">确定要清空当前已加载的词库吗？此操作不可撤销。</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="cancel">取消</button>
+          <button type="button" class="btn btn-danger" id="confirm-clear-btn" data-i18n="confirm">确认清空</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 词库格式说明 Modal -->
+  <div class="modal fade" id="format-modal" tabindex="-1" aria-labelledby="format-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title" id="format-modal-title">
+            <i class="fas fa-file-alt text-primary me-2"></i><span data-i18n="modal_format_title">词库格式详细说明</span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="close_aria" data-i18n-attr="aria-label"></button>
+        </div>
+        <div class="modal-body">
+          <p class="fw-semibold" data-i18n="modal_format_intro">提示词库文件（.txt / .md）遵循以下格式规则：</p>
+          <hr>
+          <h6><i class="fas fa-tag text-success me-1"></i><span data-i18n="modal_step1_title">1. 定义提示词路径</span></h6>
+          <p data-i18n="modal_step1_desc">以 $$ 开头和结尾，内部使用 . 分隔分类与标题。最后一个子串为「提示词项标题」，其余子串为「分类」（支持多级嵌套）。</p>
+          <pre class="bg-light p-2 rounded small">$$图像生成.风格化.水墨画风格$$</pre>
+
+          <h6 class="mt-3"><i class="fas fa-sliders-h text-info me-1"></i><span data-i18n="modal_step2_title">2. 定义参数与默认值（可选）</span></h6>
+          <p data-i18n="modal_step2_desc">紧跟在路径行下方，以 @@ 开头和结尾，用 , 分隔参数。可使用 参数名:默认值 指定默认值；无默认值直接写参数名。</p>
+          <pre class="bg-light p-2 rounded small">@@画幅:竖幅,主题:山水风光,色调:墨绿,额外风格@@</pre>
+
+          <h6 class="mt-3"><i class="fas fa-paragraph text-warning me-1"></i><span data-i18n="modal_step3_title">3. 定义提示词内容</span></h6>
+          <p data-i18n="modal_step3_desc">路径行（及可选的参数行）之后的所有非空行均属于该提示词，直到下一个 $$...$$ 或文件结束。内容中可使用 {{参数名}} 占位符。</p>
+          <pre class="bg-light p-2 rounded small">请生成一幅{{画幅}}的水墨风格画，主题为{{主题}}，整体呈现{{色调}}色调，并融入{{额外风格}}元素。</pre>
+
+          <h6 class="mt-3"><i class="fas fa-folder-tree text-secondary me-1"></i><span data-i18n="modal_step4_title">4. 完整示例（包含默认值）</span></h6>
+          <p data-i18n="modal_step4_desc">以下为包含默认值的完整示例：</p>
+          <pre class="bg-dark text-light p-3 rounded small" style="font-size:0.8rem;">
+$$创意写作.科幻.赛博朋克开场$$
+@@城市名称:新东京,主角代号:Zero,氛围:霓虹低语,天气强度:暴雨@@
+在{{城市名称}}的霓虹雨夜，代号为{{主角代号}}的改造人从巷弄中苏醒。
+记忆芯片只剩最后1%电量，耳边回荡着{{氛围}}，天空落下{{天气强度}}。
+
+$$基础.角色.叙事助手$$
+@@输出语言:中文,详细程度:深度详细@@
+你是一位{{详细程度}}的叙事专家，请使用{{输出语言}}回答问题。</pre>
+          <div class="alert alert-primary mt-3 mb-0 small">
+            <i class="fas fa-lightbulb"></i> <strong><span data-i18n="modal_tip_title">使用技巧：</span></strong> <span data-i18n="modal_tip">参数默认值会预填到输入框，可修改后再「添加」。省略冒号即无默认值（留空）。</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="modal_close">关闭</button>
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal" data-i18n="modal_got_it">知道了</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function() {
+      'use strict';
+
+      // ===================== 状态 =====================
+      let currentLang = 'zh-CN';
+      let i18n = {};
+      let treeData = [];
+      let nodeMap = new Map();              // path -> { name, path, type, content, params }
+      let flatNodes = [];                   // 扁平索引，用于搜索
+      let selectedPath = null;              // 当前选中的提示词完整路径
+      let historyStack = [];
+      let searchQuery = '';
+      let searchMatches = [];
+      let searchIndex = 0;
+
+      // ===================== DOM 引用 =====================
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+
+      const outputArea = $('#output-area');
+      const previewArea = $('#preview-area');
+      const paramsContainer = $('#params-container');
+      const treeList = $('#tree-list');
+      const treeEmpty = $('#tree-empty');
+      const fileInput = $('#dictionary-file');
+      const dropZone = $('#drop-zone');
+      const langLabel = $('#lang-label');
+      const langItems = $$('.dropdown-item[data-lang]');
+      const searchInput = $('#tree-search-input');
+      const searchPrevBtn = $('#search-prev');
+      const searchNextBtn = $('#search-next');
+      const searchClearBtn = $('#search-clear');
+      const addBtn = $('#add-prompt-btn');
+      const clearOutputBtn = $('#clear-output-btn');
+      const restoreBtn = $('#restore-output-btn');
+      const copyBtn = $('#copy-output-btn');
+      const copyClearBtn = $('#copy-clear-btn');
+      const clearLibBtn = $('#clear-lib-btn');
+      const confirmClearBtn = $('#confirm-clear-btn');
+
+      // ===================== 工具函数 =====================
+      function t(key, params) {
+        let str = i18n?.[key] || key;
+        if (params) {
+          for (const [k, v] of Object.entries(params)) {
+            str = str.replace(`{${k}}`, v);
+          }
+        }
+        return str;
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function escapeRegExp(str) {
+        return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
+      function sanitizePath(path) {
+        return path.replace(/[^a-zA-Z0-9]/g, '_');
+      }
+
+      function updateAllI18n() {
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+          const key = el.getAttribute('data-i18n');
+          el.innerHTML = t(key);
+        });
+        document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+          const attrs = el.getAttribute('data-i18n-attr').split(',');
+          attrs.forEach(attr => {
+            const key = el.getAttribute(attr);
+            if (key) el.setAttribute(attr, t(key));
+          });
+        });
+        searchInput.placeholder = t('search_placeholder');
+        langLabel.textContent = currentLang === 'en' ? 'English' : '中文';
+        document.documentElement.lang = currentLang;
+        document.title = t('title');
+      }
+
+      async function loadI18n(lang, { silent = false } = {}) {
+        try {
+          const resp = await fetch(`i18n/${lang}.json`);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          i18n = await resp.json();
+          currentLang = lang;
+          updateAllI18n();
+          return true;
+        } catch (err) {
+          console.error('加载 i18n 失败:', err);
+          if (!silent) showToast(t('load_failed'), { type: 'danger', autohide: true, delay: 5000 });
+          return false;
+        }
+      }
+
+      function showToast(message, options = {}) {
+        const { type = 'info', autohide = true, delay = 3000 } = options;
+        const icons = { info: 'fa-info-circle', success: 'fa-check-circle', danger: 'fa-exclamation-triangle' };
+        const bg = type === 'success' ? 'text-bg-success' : type === 'danger' ? 'text-bg-danger' : 'text-bg-primary';
+        const el = document.createElement('div');
+        el.className = `toast align-items-center text-white ${bg}`;
+        el.setAttribute('role', 'alert');
+        el.innerHTML = `<div class="d-flex">
+          <div class="toast-body"><i class="fas ${icons[type] || icons.info} me-2"></i>${message}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="${t('close_aria')}"></button>
+        </div>`;
+        $('#toast-container').appendChild(el);
+        const toast = new bootstrap.Toast(el, { autohide, delay });
+        toast.show();
+        el.addEventListener('hidden.bs.toast', () => el.remove());
+        return toast;
+      }
+
+      // ===================== 词库解析 =====================
+      function parseParams(raw) {
+        return raw.split(',').map(s => s.trim()).filter(Boolean).reduce((acc, item) => {
+          if (item.includes(':')) {
+            const idx = item.indexOf(':');
+            const name = item.slice(0, idx).trim();
+            if (name) acc.push({ name, defaultValue: item.slice(idx + 1).trim() });
+          } else {
+            acc.push({ name: item, defaultValue: '' });
+          }
+          return acc;
+        }, []);
+      }
+
+      function parseDictionaryFile(text) {
+        const lines = text.split(/\r?\n/);
+        const leaves = [];
+        let curPath = null;
+        let curParams = null;
+        let curLines = [];
+        let reading = false;
+
+        const isPathLine = (s) => s.startsWith('$$') && s.endsWith('$$') && s.length >= 4;
+        const isParamLine = (s) => s.startsWith('@@') && s.endsWith('@@') && s.length >= 4;
+
+        lines.forEach(raw => {
+          const trimmed = raw.trim();
+          if (isPathLine(trimmed)) {
+            if (curPath !== null && reading) {
+              leaves.push({ path: curPath, params: curParams || [], content: curLines.join('\n') });
+            }
+            curPath = trimmed.slice(2, -2).trim();
+            curParams = null;
+            curLines = [];
+            reading = true;
+            return;
+          }
+          if (curPath !== null && reading && curParams === null && curLines.length === 0) {
+            if (isParamLine(trimmed)) {
+              const inner = trimmed.slice(2, -2).trim();
+              curParams = inner === '' ? [] : parseParams(inner);
+              return;
+            }
+          }
+          if (curPath !== null && reading) curLines.push(raw);
+        });
+        if (curPath !== null && reading) {
+          leaves.push({ path: curPath, params: curParams || [], content: curLines.join('\n') });
+        }
+        return leaves;
+      }
+
+      function buildNodeMap(leaves) {
+        const map = new Map();
+        leaves.forEach(l => {
+          const parts = l.path.split('.').map(s => s.trim()).filter(Boolean);
+          if (parts.length === 0) return;
+          const fullPath = parts.join('/');
+          map.set(fullPath, {
+            name: parts[parts.length - 1],
+            path: fullPath,
+            type: 'leaf',
+            content: l.content.trim(),
+            params: l.params
+          });
+          let acc = '';
+          parts.slice(0, -1).forEach(seg => {
+            acc = acc === '' ? seg : acc + '/' + seg;
+            if (!map.has(acc)) {
+              map.set(acc, { name: seg, path: acc, type: 'dir', children: [] });
+            }
+          });
+        });
+        map.forEach(node => {
+          if (node.type === 'dir' && !node.children) node.children = [];
+          if (node.type === 'leaf' && !node.content) node.content = '';
+        });
+        return map;
+      }
+
+      function buildTreeFromMap(map) {
+        const root = [];
+        map.forEach(node => {
+          const dot = node.path.lastIndexOf('/');
+          const parentPath = dot >= 0 ? node.path.slice(0, dot) : null;
+          if (parentPath === null) {
+            root.push(node);
+          } else {
+            const parent = map.get(parentPath);
+            if (parent) parent.children.push(node);
+            else root.push(node);
+          }
+        });
+        const prune = (nodes) => {
+          nodes.forEach(n => {
+            if (n.type === 'dir') n.children = prune(n.children);
+          });
+          nodes = nodes.filter(n => n.type === 'leaf' || (n.type === 'dir' && n.children.length > 0));
+          nodes.sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+          });
+          return nodes;
+        };
+        return prune(root);
+      }
+
+      // ===================== 渲染 =====================
+      function renderTree() {
+        treeList.innerHTML = '';
+        flatNodes = [];
+        searchMatches = [];
+        treeEmpty.classList.toggle('d-none', treeData.length > 0);
+        if (treeData.length === 0) {
+          treeList.classList.add('d-none');
+          return;
+        }
+        treeList.classList.remove('d-none');
+
+        const fragment = document.createDocumentFragment();
+
+        const renderNodes = (nodes, container, depth) => {
+          nodes.forEach(node => {
+            if (node.type === 'dir') {
+              const item = document.createElement('div');
+              item.className = 'list-group-item list-group-item-action p-0';
+
+              const collapseId = `c-${sanitizePath(node.path)}`;
+              const pad = Array(depth * 3).fill('').join('&#8199;');
+
+              const head = document.createElement('button');
+              head.className = 'btn btn-link text-decoration-none d-flex align-items-center w-100 text-body';
+              head.setAttribute('data-bs-toggle', 'collapse');
+              head.setAttribute('data-bs-target', `#${collapseId}`);
+              head.setAttribute('aria-expanded', 'false');
+              head.innerHTML = `${pad}<i class="fas fa-chevron-right chev-ref me-1"></i><i class="fas fa-folder me-1 text-warning"></i>${escapeHtml(node.name)}`;
+              item.appendChild(head);
+
+              const children = document.createElement('div');
+              children.id = collapseId;
+              children.className = 'collapse';
+
+              renderNodes(node.children, children, depth + 1);
+
+              container.appendChild(item);
+              container.appendChild(children);
+
+              flatNodes.push({ path: node.path, name: node.name, type: 'dir', el: head });
+
+              children.addEventListener('shown.bs.collapse', () => {
+                head.setAttribute('aria-expanded', 'true');
+                head.querySelector('.chev-ref').className = 'fas fa-chevron-down chev-ref me-1';
+              });
+              children.addEventListener('hidden.bs.collapse', () => {
+                head.setAttribute('aria-expanded', 'false');
+                head.querySelector('.chev-ref').className = 'fas fa-chevron-right chev-ref me-1';
+              });
+            } else {
+              const item = document.createElement('button');
+              item.type = 'button';
+              item.className = 'list-group-item list-group-item-action text-start';
+              if (node.path === selectedPath) item.classList.add('active');
+
+              const pad = Array(depth * 3).fill('').join('&#8199;');
+              const check = node.path === selectedPath ? '' : 'd-none';
+              item.innerHTML = `${pad}<i class="fas fa-file-lines me-1 text-secondary"></i>${escapeHtml(node.name)}<i class="fas fa-check text-white ms-auto float-end ${check}"></i>`;
+
+              flatNodes.push({ path: node.path, name: node.name, type: 'leaf', el: item });
+              item.addEventListener('click', () => toggleSelect(node.path));
+
+              container.appendChild(item);
+            }
+          });
+        };
+
+        renderNodes(treeData, fragment, 0);
+        treeList.appendChild(fragment);
+
+        if (searchQuery) {
+          runSearch(searchQuery);
+        } else {
+          clearSearchUI();
+        }
+      }
+
+      function toggleSelect(path) {
+        selectedPath = selectedPath === path ? null : path;
+        flatNodes.forEach(n => {
+          if (n.type !== 'leaf') return;
+          const on = n.path === selectedPath;
+          n.el.classList.toggle('active', on);
+          const check = n.el.querySelector('.fa-check');
+          if (check) check.classList.toggle('d-none', !on);
+        });
+        refreshPreview();
+        updateAddButton();
+      }
+
+      function refreshPreview() {
+        if (!selectedPath || !nodeMap.has(selectedPath)) {
+          previewArea.value = '';
+          renderParamHint();
+          return;
+        }
+        const leaf = nodeMap.get(selectedPath);
+        previewArea.value = leaf.content;
+        renderParamForm(leaf.params);
+      }
+
+      function renderParamHint() {
+        paramsContainer.innerHTML = `<div class="text-muted small text-center py-2"><i class="fas fa-sliders-h me-1"></i>${t('params_empty_selected')}</div>`;
+      }
+
+      function renderParamForm(params) {
+        if (!params || params.length === 0) {
+          paramsContainer.innerHTML = `<div class="text-muted small text-center py-2"><i class="fas fa-check-circle me-1"></i>${t('params_none_ready')}</div>`;
+          return;
+        }
+        const wrap = document.createElement('div');
+        wrap.className = 'vstack gap-2';
+        params.forEach(p => {
+          const row = document.createElement('div');
+          row.className = 'row align-items-center g-1';
+          row.innerHTML = `
+            <div class="col-4"><label class="form-label mb-0 small fw-semibold">${escapeHtml(p.name)}</label></div>
+            <div class="col-8"><input type="text" class="form-control form-control-sm param-input"
+              data-param-name="${escapeHtml(p.name)}" value="${escapeHtml(p.defaultValue || '')}"
+              placeholder="${escapeHtml(t('param_input_placeholder'))}"></div>`;
+          wrap.appendChild(row);
+        });
+        paramsContainer.innerHTML = '';
+        paramsContainer.appendChild(wrap);
+      }
+
+      function getParamMap() {
+        const map = {};
+        paramsContainer.querySelectorAll('.param-input').forEach(input => {
+          const name = input.getAttribute('data-param-name');
+          if (name) map[name] = input.value;
+        });
+        return map;
+      }
+
+      // ===================== 搜索定位 =====================
+      function runSearch(query) {
+        searchQuery = query.trim().toLowerCase();
+        const q = searchQuery;
+        if (!q) {
+          clearSearchUI();
+          return;
+        }
+        searchMatches = flatNodes
+          .filter(n => n.path.toLowerCase().includes(q) || n.name.toLowerCase().includes(q))
+          .map(n => n.path);
+        searchIndex = 0;
+
+        const hasResults = searchMatches.length > 0;
+        searchPrevBtn.classList.toggle('d-none', !hasResults);
+        searchNextBtn.classList.toggle('d-none', !hasResults);
+        searchClearBtn.classList.remove('d-none');
+
+        clearHighlight();
+        if (hasResults) {
+          locateToPath(searchMatches[0]);
+        } else {
+          showToast(t('search_no_results'), { type: 'info' });
+        }
+      }
+
+      function clearSearchUI() {
+        searchQuery = '';
+        searchMatches = [];
+        searchIndex = 0;
+        searchPrevBtn.classList.add('d-none');
+        searchNextBtn.classList.add('d-none');
+        searchClearBtn.classList.add('d-none');
+        clearHighlight();
+      }
+
+      function clearHighlight() {
+        treeList.querySelectorAll('.search-hit').forEach(el => el.classList.remove('search-hit'));
+      }
+
+      function locateToPath(path) {
+        const node = flatNodes.find(n => n.path === path);
+        if (!node) return;
+
+        const parts = node.path.split('/');
+        for (let i = 1; i < parts.length; i++) {
+          const dirPath = parts.slice(0, i).join('/');
+          const dirNode = flatNodes.find(n => n.type === 'dir' && n.path === dirPath);
+          if (dirNode) {
+            const targetId = `c-${sanitizePath(dirPath)}`;
+            const target = document.getElementById(targetId);
+            if (target && !target.classList.contains('show')) {
+              bootstrap.Collapse.getOrCreateInstance(target, { toggle: false }).show();
+            }
+          }
+        }
+
+        clearHighlight();
+        node.el.classList.add('search-hit');
+        node.el.scrollIntoView({ block: 'nearest' });
+      }
+
+      function moveSearch(dir) {
+        if (searchMatches.length === 0) return;
+        searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
+        locateToPath(searchMatches[searchIndex]);
+      }
+
+      function bindSearch() {
+        searchInput.addEventListener('input', () => runSearch(searchInput.value));
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            moveSearch(e.shiftKey ? -1 : 1);
+          } else if (e.key === 'Escape') {
+            searchInput.value = '';
+            clearSearchUI();
+          }
+        });
+        searchPrevBtn.addEventListener('click', () => moveSearch(-1));
+        searchNextBtn.addEventListener('click', () => moveSearch(1));
+        searchClearBtn.addEventListener('click', () => {
+          searchInput.value = '';
+          clearSearchUI();
+          searchInput.focus();
+        });
+      }
+
+      // ===================== 文件上传（拖放） =====================
+      function handleFile(file) {
+        if (!/\.(txt|md)$/i.test(file.name)) {
+          showToast(t('file_type_error'), { type: 'danger', autohide: true, delay: 5000 });
+          fileInput.value = '';
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          loadDictionary(e.target.result);
+          fileInput.value = '';
+        };
+        reader.onerror = () => {
+          fileInput.value = '';
+          showToast(t('file_read_failed'), { type: 'danger', autohide: true, delay: 5000 });
+        };
+        reader.readAsText(file, 'UTF-8');
+      }
+
+      function bindDropZone() {
+        ['dragenter', 'dragover'].forEach(ev => {
+          dropZone.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('dragover');
+          });
+        });
+        ['dragleave', 'drop'].forEach(ev => {
+          dropZone.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('dragover');
+          });
+        });
+        dropZone.addEventListener('drop', (e) => {
+          const file = e.dataTransfer?.files?.[0];
+          if (file) handleFile(file);
+        });
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+          }
+        });
+        fileInput.addEventListener('change', () => {
+          const file = fileInput.files[0];
+          if (file) handleFile(file);
+        });
+      }
+
+      function loadDictionary(text) {
+        clearDictionaryData();
+        const leaves = parseDictionaryFile(text);
+        if (leaves.length === 0) {
+          renderTree();
+          showToast(t('no_valid_entries'), { type: 'danger', autohide: true, delay: 5000 });
+          return;
+        }
+        nodeMap = buildNodeMap(leaves);
+        treeData = buildTreeFromMap(nodeMap);
+        renderTree();
+        showToast(t('file_loaded', { count: leaves.length }), { type: 'success' });
+      }
+
+      function clearDictionaryData() {
+        nodeMap = new Map();
+        treeData = [];
+        flatNodes = [];
+        selectedPath = null;
+        searchQuery = '';
+        searchInput.value = '';
+        previewArea.value = '';
+        paramsContainer.innerHTML = '';
+        updateAddButton();
+        renderParamHint();
+      }
+
+      function doClearLibrary() {
+        clearDictionaryData();
+        renderTree();
+        showToast(t('library_cleared'), { type: 'success' });
+      }
+
+      // ===================== 输出操作 =====================
+      function saveHistory(text) {
+        historyStack.push(text);
+        if (historyStack.length > 50) historyStack.shift();
+      }
+
+      function appendToOutput(content) {
+        saveHistory(outputArea.value);
+        let cur = outputArea.value;
+        if (cur === '') {
+          outputArea.value = content;
+        } else if (cur.endsWith('\n')) {
+          outputArea.value = cur + content;
+        } else {
+          outputArea.value = cur + '\n\n\n' + content;
+        }
+        outputArea.scrollTop = outputArea.scrollHeight;
+        updateActionButtons();
+      }
+
+      function addSelectedPrompt() {
+        if (!selectedPath || !nodeMap.has(selectedPath)) {
+          showToast(t('no_selection'), { type: 'info' });
+          return;
+        }
+        const leaf = nodeMap.get(selectedPath);
+        const params = getParamMap();
+        let content = leaf.content;
+        Object.entries(params).forEach(([k, v]) => {
+          content = content.replace(new RegExp(`\\{\\{${escapeRegExp(k)}\\}\\}`, 'g'), v);
+        });
+        appendToOutput(content);
+        showToast(t('added'), { type: 'success' });
+      }
+
+      function clearOutput() {
+        if (!outputArea.value) return;
+        saveHistory(outputArea.value);
+        outputArea.value = '';
+        updateActionButtons();
+      }
+
+      function restoreOutput() {
+        if (historyStack.length === 0) {
+          showToast(t('no_history'), { type: 'info' });
+          return;
+        }
+        outputArea.value = historyStack.pop();
+        updateActionButtons();
+      }
+
+      function copyOutput() {
+        if (!outputArea.value) return;
+        if (!navigator.clipboard) {
+          showToast(t('clipboard_unsupported'), { type: 'danger', autohide: true, delay: 5000 });
+          return;
+        }
+        navigator.clipboard.writeText(outputArea.value)
+          .then(() => showToast(t('copy_success'), { type: 'success' }))
+          .catch(() => showToast(t('copy_failed'), { type: 'danger', autohide: true, delay: 5000 }));
+      }
+
+      function copyClearOutput() {
+        if (!outputArea.value) return;
+        if (!navigator.clipboard) {
+          showToast(t('clipboard_unsupported'), { type: 'danger', autohide: true, delay: 5000 });
+          return;
+        }
+        navigator.clipboard.writeText(outputArea.value)
+          .then(() => {
+            saveHistory(outputArea.value);
+            outputArea.value = '';
+            updateActionButtons();
+            showToast(t('copy_cleared'), { type: 'success' });
+          })
+          .catch(() => showToast(t('copy_failed'), { type: 'danger', autohide: true, delay: 5000 }));
+      }
+
+      function updateActionButtons() {
+        const hasText = outputArea.value.length > 0;
+        copyBtn.disabled = !hasText;
+        copyClearBtn.disabled = !hasText;
+        restoreBtn.disabled = historyStack.length === 0;
+      }
+
+      function updateAddButton() {
+        addBtn.disabled = !selectedPath;
+      }
+
+      // ===================== 语言切换 =====================
+      async function setLanguage(lang) {
+        if (lang === currentLang) return;
+        const ok = await loadI18n(lang);
+        if (!ok) return;
+        renderTree();
+        refreshPreview();
+      }
+
+      function bindOutputTab() {
+        outputArea.addEventListener('keydown', (e) => {
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = outputArea.selectionStart;
+            const end = outputArea.selectionEnd;
+            outputArea.value = outputArea.value.substring(0, start) + '\t' + outputArea.value.substring(end);
+            outputArea.selectionStart = outputArea.selectionEnd = start + 1;
+          }
+        });
+      }
+
+      // ===================== 初始化 =====================
+      async function init() {
+        await loadI18n(currentLang, { silent: true });
+
+        langItems.forEach(item => {
+          item.addEventListener('click', (e) => {
+            e.preventDefault();
+            setLanguage(item.getAttribute('data-lang'));
+          });
+        });
+
+        bindSearch();
+        bindDropZone();
+        bindOutputTab();
+
+        addBtn.addEventListener('click', addSelectedPrompt);
+        clearOutputBtn.addEventListener('click', clearOutput);
+        restoreBtn.addEventListener('click', restoreOutput);
+        copyBtn.addEventListener('click', copyOutput);
+        copyClearBtn.addEventListener('click', copyClearOutput);
+
+        clearLibBtn.addEventListener('click', () => {
+          bootstrap.Modal.getOrCreateInstance($('#confirm-modal')).show();
+        });
+        confirmClearBtn.addEventListener('click', () => {
+          bootstrap.Modal.getOrCreateInstance($('#confirm-modal')).hide();
+          doClearLibrary();
+        });
+
+        updateActionButtons();
+        updateAddButton();
+        renderTree();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+
+    })();
+  </script>
+</body>
+</html>
