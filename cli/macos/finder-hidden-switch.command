@@ -2,7 +2,7 @@
 
 echo "========================================="
 echo "  Finder 隐藏文件显示控制"
-echo "  版本 1.0"
+echo "  版本 1.1"
 echo "========================================="
 echo "[适用场景]"
 echo "需要临时查看或隐藏 macOS Finder 中的隐藏文件（如 .DS_Store、隐藏配置目录）时使用。"
@@ -24,7 +24,7 @@ echo "========================================="
 
 # ---------- 菜单选择 ----------
 while true; do
-    read -p "请输入选项数字 [1 显示隐藏文件 / 2 隐藏隐藏文件 / q 取消] 然后按回车: " choice
+    read -p "[输入] 请输入选项数字 [1 显示隐藏文件 / 2 隐藏隐藏文件 / q 取消] 然后按回车: " choice
 
     case "$choice" in
         1)
@@ -37,7 +37,7 @@ while true; do
             ;;
         [qQ])
             echo "[提示] 已取消，未做任何修改。"
-            read -p "按回车键退出..."
+            read -p "[结束] 按回车键退出..."
             exit 0
             ;;
         *)
@@ -47,14 +47,14 @@ while true; do
     esac
 
     # ---------- 破坏性操作确认 ----------
-    read -p "[提示] 即将${target_desc}，并重启 Finder（已打开的 Finder 窗口将关闭）。确认执行？[y / n] " confirm
+    read -p "[输入] 即将${target_desc}，并重启 Finder（已打开的 Finder 窗口将关闭）。确认执行？[y / n] " confirm
     case "$confirm" in
         [yY])
             break
             ;;
         *)
             echo "[提示] 已取消，未做任何修改。"
-            read -p "按回车键退出..."
+            read -p "[结束] 按回车键退出..."
             exit 0
             ;;
     esac
@@ -89,5 +89,5 @@ else
     echo "  成功：$((2 - fail_count))/2，失败：${fail_count}/2，请检查后重试。"
 fi
 
-read -p "按回车键退出..."
+read -p "[结束] 按回车键退出..."
 exit 0

@@ -12,26 +12,16 @@
 
 ## 命令行工具（`cli/`）
 
-存储于 `cli` 目录，按系统类型归档：
+按系统类型归档，新增工具直接放入对应目录，无需修改本文档：
 
-- `macos/`：macOS 工具（`.command`）
-- `windows/`：Windows 工具（`.ps1`，经 `PowerShellRunner.cmd` 启动）
+- `cli/macos/`：macOS 工具（`.command`，需 `chmod +x`）
+- `cli/windows/`：Windows 工具（`.ps1`，经 `PSRunner.cmd` 启动）
 
-| 工具 | 说明 | 版本 |
-| ---- | ---- | ---- |
-| 隐藏文件控制（macOS `.command`） | 切换 Finder 隐藏文件显示，并自动重启 Finder 生效 | 1.0 |
-| 图标缓存清理（Windows `.ps1`） | 清理系统图标/缩略图缓存，并重启资源管理器 | 1.0 |
-
-> Windows 侧工具统一经 `PowerShellRunner.cmd` 拖拽或输入路径运行，详见交互规范。
+> Windows 侧工具统一经 `PSRunner.cmd` 拖拽或输入路径运行，详见交互规范。
 
 ## 纯前端工具（`web/`）
 
-存储于 `web` 目录，无需构建、无需后端；部分工具通过只读公开接口访问第三方数据。
-
-| 工具 | 说明 | 版本 |
-| ---- | ---- | ---- |
-| gitignore-maker | 从模板库选择/搜索并合并生成 `.gitignore` 文件 | 1.0 |
-| prompt-maker | 层级词库 + 动态参数（支持默认值）提示词组合生成 | 1.0 |
+无需构建、无需后端；部分工具通过只读公开接口访问第三方数据。每个工具使用一个独立目录（`web/<工具名>/`），新增工具直接创建目录即可，无需修改本文档。
 
 ## 交互规范（`doc/`）
 

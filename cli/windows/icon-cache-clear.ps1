@@ -4,7 +4,7 @@ $null = chcp 65001
 $sep = '=' * 50
 Write-Host $sep
 Write-Host "            系统图标缓存清理工具"
-Write-Host "            版本 1.0"
+Write-Host "            版本 1.1"
 Write-Host $sep
 Write-Host "[适用场景]"
 Write-Host "当 Windows 部分应用图标某天突然无法正常显示、缩略图错乱时使用。"
@@ -36,16 +36,16 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $isAdmin) {
     Write-Host "[提示] 未检测到管理员权限，部分操作可能失败。"
     Write-Host "        建议关闭后右键以管理员权限运行。"
-    $ok = Read-Host "是否仍要继续？[y 继续 / n 取消]"
-    if ($ok -notmatch '^[yY]$') { Write-Host "[提示] 已取消，未做任何修改。"; Read-Host "按回车键退出..."; exit 0 }
+    $ok = Read-Host "[输入] 是否仍要继续？[y 继续 / n 取消]"
+    if ($ok -notmatch '^[yY]$') { Write-Host "[提示] 已取消，未做任何修改。"; Read-Host "[结束] 按回车键退出..."; exit 0 }
     Write-Host ""
 }
 
 # 菜单选择
 while ($true) {
-    $choice = Read-Host "请输入选项数字 [1 开始执行 / q 取消] 然后按回车"
+    $choice = Read-Host "[输入] 请输入选项数字 [1 开始执行 / q 取消] 然后按回车"
     if ($choice -eq '1') { break }
-    if ($choice -match '^[qQ]$') { Write-Host "[提示] 已取消，未做任何修改。"; Read-Host "按回车键退出..."; exit 0 }
+    if ($choice -match '^[qQ]$') { Write-Host "[提示] 已取消，未做任何修改。"; Read-Host "[结束] 按回车键退出..."; exit 0 }
     Write-Host "[错误] 无效输入，请输入 1 或 q。"
 }
 
@@ -82,5 +82,5 @@ Write-Host ""
 Write-Host "[结果] 执行完成。"
 if ($fail -eq 0) { Write-Host "  全部步骤成功，图标缓存清理完成。" }
 else { Write-Host "  失败步骤数：$fail/4，请检查后重新运行。" }
-Read-Host "按回车键退出..."
+Read-Host "[结束] 按回车键退出..."
 exit 0
