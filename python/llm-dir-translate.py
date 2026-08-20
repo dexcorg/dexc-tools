@@ -17,17 +17,26 @@ from html.parser import HTMLParser
 
 import requests
 
+try:
+    import tiktoken
+except ImportError:  # pragma: no cover
+    tiktoken = None
+
 import charset_normalizer
 from ruamel.yaml import YAML
 
-VERSION = "1.0"
+VERSION = "1.1"
 
 BATCH_ITEMS = int(os.environ.get("BATCH_ITEMS", "8"))
 BATCH_CHARS = int(os.environ.get("BATCH_CHARS", "400"))
+BATCH_MAX_ITEMS = int(os.environ.get("BATCH_MAX_ITEMS", "64"))
 REQUEST_TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "1800"))
 RETRIES = int(os.environ.get("LLM_RETRIES", "3"))
 TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.1"))
 MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "1024"))
+CONTEXT_TOKENS = int(os.environ.get("LLM_CONTEXT_TOKENS", "0"))
+BUDGET_DIVISOR = 4
+OUTPUT_RATIO = 1.5
 
 LANGUAGES = {
     "1": ("zh-CN", "简体中文"),
@@ -61,6 +70,69 @@ SEG_TOKEN_RE = re.compile(r"\u27e6SEG(\d+)\u27e7")
 JS_STR_RE = re.compile(r"""('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")""")
 TRANSLATABLE_ATTRS = {"title", "placeholder", "alt", "aria-label"}
 LETTER_RE = re.compile(r"[A-Za-z\u00c0-\u024f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
+CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
+
+CONTEXT_FIELDS = ("context_length", "max_context_length", "max_model_len", "context_window", "context_size")
+
+MODEL_CONTEXT_MAP = (
+    ("llama4", 1_048_576),
+    ("llama3.1", 131_072),
+    ("llama3", 8_192),
+    ("llama-2", 4_096),
+    ("gpt-4o", 128_000),
+    ("gpt-4-turbo", 128_000),
+    ("gpt-4", 8_192),
+    ("gpt-3.5", 16_385),
+    ("deepseek", 65_536),
+    ("glm-4", 128_000),
+    ("chatglm", 32_768),
+    ("qwen", 32_768),
+    ("mistral", 32_768),
+    ("mixtral", 32_768),
+    ("command-r", 128_000),
+    ("gemma", 8_192),
+    ("phi", 8_192),
+    ("yi", 4_096),
+)
+
+_TIKTOKEN_ENC = None
+
+
+def get_tiktoken():
+    global _TIKTOKEN_ENC
+    if _TIKTOKEN_ENC is None:
+        try:
+            _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base") if tiktoken else False
+        except Exception:
+            _TIKTOKEN_ENC = False
+    return _TIKTOKEN_ENC or None
+
+
+def estimate_tokens(text):
+    if not text:
+        return 0
+    enc = get_tiktoken()
+    if enc is not None:
+        try:
+            return len(enc.encode(text))
+        except Exception:
+            pass
+    cjk = len(CJK_RE.findall(text))
+    rest = len(text) - cjk
+    return cjk + (rest + 3) // 4
+
+
+def resolve_token_budget(context_limit):
+    if context_limit and context_limit > 0:
+        return max(1, context_limit // BUDGET_DIVISOR)
+    return BATCH_CHARS
+
+
+def resolve_item_cap(context_limit):
+    if not context_limit or context_limit <= 0:
+        return BATCH_ITEMS
+    budget = context_limit // BUDGET_DIVISOR
+    return max(BATCH_ITEMS, min(BATCH_MAX_ITEMS, budget // 16))
 
 
 def log(msg):
@@ -77,6 +149,7 @@ def print_banner():
     print()
     print("[功能说明]")
     print("递归扫描来源目录，按文件类型提取可翻译文本，经 LLM API（OpenAI 兼容）翻译后输出到另一目录，保持原目录结构与文件格式。")
+    print("翻译分段按模型上下文 Token 上限的 1/4 动态分批，Token 上限可手动指定（直接回车则自动探测）。")
     print()
     print("[操作方式]")
     print("可直接拖放文件夹到终端，或手动输入路径；按提示依次输入各项参数，确认后执行。也可通过命令行参数非交互运行。")
@@ -179,22 +252,50 @@ def parse_json_array(s):
 
 
 class LlamaClient:
-    def __init__(self, base_url, model=None, timeout=REQUEST_TIMEOUT):
+    def __init__(self, base_url, model=None, timeout=REQUEST_TIMEOUT, context_limit=0):
         self.base = normalize_base(base_url)
         self.model = model
         self.timeout = timeout
+        self.context_limit = context_limit
 
-    def fetch_model(self):
+    def fetch_model_meta(self):
         try:
             r = requests.get(self.base + "/models", timeout=15)
             r.raise_for_status()
             j = r.json()
             data = j.get("data") or j.get("models") or []
-            if data:
-                return data[0].get("id") or data[0].get("name")
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
+    def fetch_model(self):
+        try:
+            for info in self.fetch_model_meta():
+                if isinstance(info, dict):
+                    mid = info.get("id") or info.get("name")
+                    if mid:
+                        return mid
         except Exception:
             pass
         return None
+
+    def auto_detect_context(self, model=None):
+        try:
+            for info in self.fetch_model_meta():
+                if isinstance(info, dict):
+                    for f in CONTEXT_FIELDS:
+                        v = info.get(f)
+                        if isinstance(v, int) and v > 0:
+                            return v
+        except Exception:
+            pass
+        name = model or self.model
+        if name:
+            mname = str(name).lower()
+            for key, ctx in MODEL_CONTEXT_MAP:
+                if key in mname:
+                    return ctx
+        return 0
 
     def chat(self, system, user, max_tokens=MAX_TOKENS):
         body = {
@@ -224,10 +325,22 @@ class LlamaClient:
             "4. If an input string has nothing to translate, output an empty string for it."
         )
         payload = json.dumps(texts, ensure_ascii=False)
+        in_tokens = estimate_tokens(sys_prompt) + estimate_tokens(payload)
+        max_tokens = max(MAX_TOKENS, int(in_tokens * OUTPUT_RATIO))
         last = None
         for attempt in range(RETRIES):
             try:
-                content = self.chat(sys_prompt, payload)
+                content = self.chat(sys_prompt, payload, max_tokens=max_tokens)
+            except requests.exceptions.HTTPError as e:
+                resp = e.response
+                code = getattr(resp, "status_code", None)
+                msg = (str(e) + (resp.text if resp is not None else "")).lower()
+                if code == 400 and any(w in msg for w in ("context", "prompt", "token", "length")):
+                    log("[回退] 批次超出模型上下文长度，将拆分批次重试")
+                    return None
+                last = f"API 错误: {e}"
+                time.sleep(2 * (attempt + 1))
+                continue
             except Exception as e:
                 last = f"API 错误: {e}"
                 time.sleep(2 * (attempt + 1))
@@ -247,39 +360,67 @@ class LlamaClient:
         return None
 
 
-def chunk_indexed(segments):
+def chunk_indexed(segments, token_budget=None, item_cap=None):
+    if token_budget is None:
+        token_budget = BATCH_CHARS
+    if item_cap is None:
+        item_cap = BATCH_ITEMS
+    counts = [estimate_tokens(t) for t in segments]
     batches = []
     cur = []
     clen = 0
     for i, t in enumerate(segments):
-        if cur and (len(cur) >= BATCH_ITEMS or clen + len(t) > BATCH_CHARS):
+        if cur and (len(cur) >= item_cap or clen + counts[i] > token_budget):
             batches.append(cur)
             cur = []
             clen = 0
         cur.append(i)
-        clen += len(t)
+        clen += counts[i]
     if cur:
         batches.append(cur)
     return batches
 
 
-def translate_batches(client, segments, lang_code, lang_name):
+def translate_batches(client, segments, lang_code, lang_name, token_budget=None):
     if not segments:
         return list(segments)
     translated = list(segments)
-    idx_batches = chunk_indexed(segments)
+    item_cap = resolve_item_cap(client.context_limit if client is not None else 0)
+    idx_batches = chunk_indexed(segments, token_budget=token_budget, item_cap=item_cap)
+
+    def run(idxs):
+        texts = [segments[i] for i in idxs]
+        result = client.translate_batch(texts, lang_code, lang_name)
+        if result is not None and len(result) == len(idxs):
+            for j, idx in enumerate(idxs):
+                translated[idx] = result[j]
+            return True
+        return False
+
     total = len(idx_batches)
     done = 0
     for bidx, idxs in enumerate(idx_batches, 1):
-        texts = [segments[i] for i in idxs]
-        log(f"[进度] 批次 {bidx}/{total}（{len(texts)} 段）")
-        result = client.translate_batch(texts, lang_code, lang_name)
-        if result is not None:
-            for j, idx in enumerate(idxs):
-                translated[idx] = result[j]
+        log(f"[进度] 批次 {bidx}/{total}（{len(idxs)} 段）")
+        if run(idxs):
             log(f"[完成] 批次 {bidx}/{total} 翻译完成")
         else:
-            log(f"[失败] 批次 {bidx}/{total} 失败（保留原文）")
+            stack = [idxs]
+            good = 0
+            bad = 0
+            while stack:
+                cur = stack.pop()
+                if run(cur):
+                    good += 1
+                elif len(cur) > 1:
+                    mid = len(cur) // 2
+                    stack.append(cur[:mid])
+                    stack.append(cur[mid:])
+                else:
+                    bad += 1
+            if good:
+                log(f"[修复] 批次 {bidx}/{total} 拆分重试部分成功（成功 {good} / 失败 {bad}）")
+            else:
+                log(f"[失败] 批次 {bidx}/{total}（保留原文）")
         done += len(idxs)
     return translated
 
@@ -536,42 +677,42 @@ def read_csv_rows(text):
     return [list(r) for r in csv.reader(io.StringIO(text), dialect)]
 
 
-def process_text(raw_text, client, lang_code, lang_name):
+def process_text(raw_text, client, lang_code, lang_name, token_budget=None):
     parts, segments = extract_text_segments(raw_text)
-    translated = translate_batches(client, segments, lang_code, lang_name)
+    translated = translate_batches(client, segments, lang_code, lang_name, token_budget=token_budget)
     return rebuild_parts(parts, translated)
 
 
-def process_html(raw_text, client, lang_code, lang_name):
+def process_html(raw_text, client, lang_code, lang_name, token_budget=None):
     ex = HTMLTextExtractor()
     ex.feed(raw_text)
     ex.close()
-    translated = translate_batches(client, ex.segments, lang_code, lang_name)
+    translated = translate_batches(client, ex.segments, lang_code, lang_name, token_budget=token_budget)
     return rebuild_parts(ex.parts, translated)
 
 
-def process_json(raw_text, all_nodes, client, lang_code, lang_name):
+def process_json(raw_text, all_nodes, client, lang_code, lang_name, token_budget=None):
     data = json.loads(raw_text)
     segments = []
     collect(data, all_nodes, segments)
-    translated = translate_batches(client, segments, lang_code, lang_name)
+    translated = translate_batches(client, segments, lang_code, lang_name, token_budget=token_budget)
     new_data, _ = transform_new(data, all_nodes, translated, 0)
     return json.dumps(new_data, ensure_ascii=False, indent=2) + "\n"
 
 
-def process_yaml(raw_text, all_nodes, client, lang_code, lang_name):
+def process_yaml(raw_text, all_nodes, client, lang_code, lang_name, token_budget=None):
     yaml = get_yaml()
     data = yaml.load(raw_text)
     segments = []
     collect(data, all_nodes, segments)
-    translated = translate_batches(client, segments, lang_code, lang_name)
+    translated = translate_batches(client, segments, lang_code, lang_name, token_budget=token_budget)
     transform_yaml(data, all_nodes, translated, 0)
     buf = io.StringIO()
     yaml.dump(data, buf)
     return buf.getvalue()
 
 
-def process_csv(raw_text, all_nodes, client, lang_code, lang_name):
+def process_csv(raw_text, all_nodes, client, lang_code, lang_name, token_budget=None):
     rows = read_csv_rows(raw_text)
     out_rows = []
     cells = []
@@ -584,7 +725,7 @@ def process_csv(raw_text, all_nodes, client, lang_code, lang_name):
             else:
                 out_row.append(cell)
         out_rows.append(out_row)
-    translated = translate_batches(client, cells, lang_code, lang_name)
+    translated = translate_batches(client, cells, lang_code, lang_name, token_budget=token_budget)
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
     for row in out_rows:
@@ -592,17 +733,17 @@ def process_csv(raw_text, all_nodes, client, lang_code, lang_name):
     return buf.getvalue()
 
 
-def dispatch(kind, all_nodes, raw_text, client, lang_code, lang_name):
+def dispatch(kind, all_nodes, raw_text, client, lang_code, lang_name, token_budget=None):
     if kind == "text":
-        return process_text(raw_text, client, lang_code, lang_name)
+        return process_text(raw_text, client, lang_code, lang_name, token_budget)
     if kind == "html":
-        return process_html(raw_text, client, lang_code, lang_name)
+        return process_html(raw_text, client, lang_code, lang_name, token_budget)
     if kind == "json":
-        return process_json(raw_text, all_nodes, client, lang_code, lang_name)
+        return process_json(raw_text, all_nodes, client, lang_code, lang_name, token_budget)
     if kind == "yaml":
-        return process_yaml(raw_text, all_nodes, client, lang_code, lang_name)
+        return process_yaml(raw_text, all_nodes, client, lang_code, lang_name, token_budget)
     if kind == "csv":
-        return process_csv(raw_text, all_nodes, client, lang_code, lang_name)
+        return process_csv(raw_text, all_nodes, client, lang_code, lang_name, token_budget)
     raise ValueError(kind)
 
 
@@ -635,7 +776,8 @@ def scan_files(src, exts):
     return out
 
 
-def run(args, src, dst, cfg, lang_code, lang_name, client):
+def run(args, src, dst, cfg, lang_code, lang_name, client, context_limit=0):
+    token_budget = resolve_token_budget(context_limit)
     files = scan_files(src, cfg["exts"])
     if not files:
         log(f"[提示] 未在 {src} 中找到扩展名为 {cfg['exts']} 的文件。")
@@ -653,12 +795,14 @@ def run(args, src, dst, cfg, lang_code, lang_name, client):
             raw_text = decode_bytes(f.read_bytes())
             if args.dry:
                 segs = dry_stats(cfg["kind"], cfg["all"], raw_text)
-                log(f"[完成] 提取 {rel}: {len(segs)} 段")
+                nb = len(chunk_indexed(segs, token_budget=token_budget,
+                                       item_cap=resolve_item_cap(context_limit))) if segs else 0
+                log(f"[完成] 提取 {rel}: {len(segs)} 段 / 预计 {nb} 批")
                 for s in segs[:3]:
                     log(f"      - {s[:60]!r}")
                 continue
             out.parent.mkdir(parents=True, exist_ok=True)
-            new_text = dispatch(cfg["kind"], cfg["all"], raw_text, client, lang_code, lang_name)
+            new_text = dispatch(cfg["kind"], cfg["all"], raw_text, client, lang_code, lang_name, token_budget)
             out.write_text(new_text, encoding="utf-8")
             log(f"[完成] {rel} -> {out}")
         except Exception as e:
@@ -692,6 +836,23 @@ def ask_api():
             print("[错误] 地址不能为空。")
             continue
         return s
+
+
+def ask_token_limit():
+    print("[输入] 请输入模型上下文 Token 上限（如 4096 / 32768 / 128000），直接回车将自动探测：")
+    while True:
+        s = input("[输入] Token 上限 [回车=自动探测 / q 取消]: ").strip().lower()
+        if not s:
+            return 0
+        if s == "q":
+            return None
+        try:
+            v = int(s)
+            if v > 0:
+                return v
+        except ValueError:
+            pass
+        print("[错误] 请输入正整数或直接回车。")
 
 
 def ask_file_type():
@@ -730,7 +891,7 @@ def is_inside(path, base):
         return False
 
 
-def confirm_params(src, dst, type_key, lang_name, lang_code, api, model, overwrite):
+def confirm_params(src, dst, type_key, lang_name, lang_code, api, model, overwrite, context_desc):
     mode = FILE_TYPE_LABELS[type_key].split("  ")[0]
     print("[提示] 即将执行，请确认以下参数：")
     print(f"  - 来源目录：{src}")
@@ -740,6 +901,7 @@ def confirm_params(src, dst, type_key, lang_name, lang_code, api, model, overwri
     if api:
         print(f"  - API 地址：{api}")
     print(f"  - 模型：{model or '自动探测'}")
+    print(f"  - Token 上限：{context_desc}")
     if overwrite:
         print("[提示] 注意：输出目录中已存在的同名文件将被覆盖。")
     while True:
@@ -765,6 +927,7 @@ def main():
     parser.add_argument("--lang", help="目标语言序号或代码")
     parser.add_argument("--api", help="LLM API 地址（OpenAI 兼容，必填）")
     parser.add_argument("--model", help="模型名称（默认自动探测）")
+    parser.add_argument("--token-limit", help="模型上下文 Token 上限（默认自动探测）")
     parser.add_argument("--skip-existing", action="store_true", help="跳过已存在的输出文件")
     parser.add_argument("--dry", action="store_true", help="仅提取统计，不调用模型不写文件")
     args = parser.parse_args()
@@ -834,13 +997,33 @@ def main():
     if "api" in missing:
         api = ask_api()
 
+    context_limit = 0
+    if args.token_limit:
+        try:
+            context_limit = int(args.token_limit)
+            if context_limit <= 0:
+                raise ValueError
+        except ValueError:
+            fatal(f"无效 --token-limit：{args.token_limit!r}")
+    if not context_limit:
+        context_limit = CONTEXT_TOKENS
+    if interactive and not args.token_limit and not CONTEXT_TOKENS:
+        tl = ask_token_limit()
+        if tl is None:
+            print("[提示] 已取消，未做任何操作。")
+            if interactive:
+                input("[结束] 按回车键退出...")
+            sys.exit(0)
+        context_limit = tl
+    context_desc = f"{context_limit}（手动）" if context_limit else "自动探测"
+
     overwrite = False
     if not args.dry and not args.skip_existing:
         files = scan_files(src, cfg["exts"])
         overwrite = any((dst / f.relative_to(src)).exists() for f in files)
 
     if interactive and missing:
-        if not confirm_params(src, dst, type_key, lang_name, lang_code, api, args.model, overwrite):
+        if not confirm_params(src, dst, type_key, lang_name, lang_code, api, args.model, overwrite, context_desc):
             print("[提示] 已取消，未做任何操作。")
             if interactive:
                 input("[结束] 按回车键退出...")
@@ -848,13 +1031,23 @@ def main():
 
     client = None
     if not args.dry:
-        client = LlamaClient(api, model=args.model or None)
+        client = LlamaClient(api, model=args.model or None, context_limit=context_limit)
         model = client.model or client.fetch_model()
         if model:
             client.model = model
             print(f"[提示] 使用模型：{model}")
         else:
             print("[提示] 无法自动探测模型名称，将省略 model 字段。")
+
+        if not client.context_limit:
+            resolved = client.auto_detect_context(model)
+            if resolved:
+                client.context_limit = resolved
+                print(f"[提示] 自动探测上下文 Token 上限：{resolved}")
+            else:
+                print("[提示] 无法探测 Token 上限，将使用保守默认分段。")
+        else:
+            print(f"[提示] 上下文 Token 上限：{client.context_limit}（批次预算 = {resolve_token_budget(client.context_limit)}）")
 
         try:
             client.chat("You are a translator.", "ping", max_tokens=8)
@@ -866,7 +1059,7 @@ def main():
                     input("[结束] 按回车键退出...")
                     sys.exit(0)
 
-    run(args, src, dst, cfg, lang_code, lang_name, client)
+    run(args, src, dst, cfg, lang_code, lang_name, client, context_limit)
     if interactive:
         input("[结束] 按回车键退出...")
 
