@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 from html.parser import HTMLParser
@@ -137,6 +138,37 @@ def resolve_item_cap(context_limit):
 
 def log(msg):
     print(msg, flush=True)
+
+
+class ProgressTimer:
+    def __init__(self, prefix):
+        self.prefix = prefix
+        self.t0 = None
+        self._ev = threading.Event()
+        self._th = None
+
+    def start(self):
+        self.t0 = time.monotonic()
+        if not sys.stdout.isatty():
+            return
+        print(self.prefix, end="", flush=True)
+        self._th = threading.Thread(target=self._tick, daemon=True)
+        self._th.start()
+
+    def _tick(self):
+        while not self._ev.wait(1.0):
+            line = f"{self.prefix}... 用时 {int(time.monotonic() - self.t0)} 秒"
+            print("\r" + line + " " * 16, end="", flush=True)
+
+    def stop(self):
+        if self._th is not None:
+            self._ev.set()
+            self._th.join()
+        line = f"{self.prefix}... 用时 {int(time.monotonic() - self.t0)} 秒"
+        if sys.stdout.isatty():
+            print("\r" + line, flush=True)
+        else:
+            print(line, flush=True)
 
 
 def print_banner():
@@ -400,8 +432,13 @@ def translate_batches(client, segments, lang_code, lang_name, token_budget=None)
     total = len(idx_batches)
     done = 0
     for bidx, idxs in enumerate(idx_batches, 1):
-        log(f"[进度] 批次 {bidx}/{total}（{len(idxs)} 段）")
-        if run(idxs):
+        timer = ProgressTimer(f"[进度] 批次 {bidx}/{total}（{len(idxs)} 段）")
+        timer.start()
+        try:
+            ok = run(idxs)
+        finally:
+            timer.stop()
+        if ok:
             log(f"[完成] 批次 {bidx}/{total} 翻译完成")
         else:
             stack = [idxs]

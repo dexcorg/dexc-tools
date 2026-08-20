@@ -7,6 +7,7 @@ import codecs
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -34,6 +35,37 @@ QUIT_TOKENS = {"[[q]]", "[[quit]]"}
 
 def log(msg):
     print(msg, flush=True)
+
+
+class ProgressTimer:
+    def __init__(self, prefix):
+        self.prefix = prefix
+        self.t0 = None
+        self._ev = threading.Event()
+        self._th = None
+
+    def start(self):
+        self.t0 = time.monotonic()
+        if not sys.stdout.isatty():
+            return
+        print(self.prefix, end="", flush=True)
+        self._th = threading.Thread(target=self._tick, daemon=True)
+        self._th.start()
+
+    def _tick(self):
+        while not self._ev.wait(1.0):
+            line = f"{self.prefix}... 用时 {int(time.monotonic() - self.t0)} 秒"
+            print("\r" + line + " " * 16, end="", flush=True)
+
+    def stop(self):
+        if self._th is not None:
+            self._ev.set()
+            self._th.join()
+        line = f"{self.prefix}... 用时 {int(time.monotonic() - self.t0)} 秒"
+        if sys.stdout.isatty():
+            print("\r" + line, flush=True)
+        else:
+            print(line, flush=True)
 
 
 def print_banner():
@@ -205,17 +237,21 @@ def run(args, src, dst, exts, out_ext, prompt, client):
         if args.skip_existing and out.exists():
             log(f"[提示] 步骤 {i}/{len(files)}：{rel} 输出已存在，跳过")
             continue
-        log(f"[进度] 步骤 {i}/{len(files)}：{rel} ...")
+        timer = ProgressTimer(f"[进度] 步骤 {i}/{len(files)}：{rel}")
+        timer.start()
         try:
             raw = decode_bytes(f.read_bytes())
             if args.dry:
+                timer.stop()
                 log(f"[完成] 读取 {rel}: {len(raw)} 字符")
                 continue
             new_text = call_llm(client, prompt, raw)
+            timer.stop()
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(new_text, encoding="utf-8")
             log(f"[完成] {rel} -> {out}")
         except Exception as e:
+            timer.stop()
             failures.append(str(rel))
             log(f"[失败] {rel}: {e}")
     log("[结果] 执行完成。")
