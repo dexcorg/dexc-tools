@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Frigate Config Maker</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <link rel="stylesheet" href="style/web-common.css?v=1.0">
+<style>
+    /* Tool-specific styles for frigate-config */
+    .main-workspace { min-height: calc(100vh - 140px); }
+    .form-label { font-weight: 500; font-size: 0.875rem; }
+    .form-control-sm, .form-select-sm { font-size: 0.875rem; }
+    .camera-card { border: 1px solid #e9ecef; border-radius: 8px; padding: 16px; margin-bottom: 12px; background: #fff; }
+    .camera-card .camera-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .camera-card .camera-header h6 { margin: 0; font-weight: 600; }
+    .yaml-preview { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 16px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.8rem; white-space: pre-wrap; overflow-y: auto; max-height: 600px; min-height: 400px; }
+    .stream-section { background: #f8f9fa; border-radius: 6px; padding: 12px; margin-bottom: 8px; }
+    .stream-section h6 { font-size: 0.8rem; color: #6c757d; margin-bottom: 8px; }
+    @media (max-width: 768px) { .yaml-preview { min-height: 250px; max-height: 350px; } }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="tool-header">
+    <div class="container">
+      <div class="title-group">
+        <h1><i class="fas fa-video"></i> <span data-i18n="app_title">Frigate Config Maker</span></h1>
+        <span class="badge bg-dark badge-version"><i class="fas fa-tag"></i> 1.1</span>
+      </div>
+      <div class="desc-group">
+        <small class="text-muted" data-i18n="app_desc">为 Frigate 视频监控系统生成 config.yaml 配置文件</small>
+      </div>
+      <div class="lang-group">
+        <div class="dropdown">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                  data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-globe"></i>
+            <span id="lang-label">中文</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#" data-lang="zh-CN">中文</a></li>
+            <li><a class="dropdown-item" href="#" data-lang="en">English</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="container py-3 main-workspace">
+    <div class="row g-3">
+
+      <!-- Left Column: Form -->
+      <div class="col-lg-7">
+        <div class="card tool-card h-100">
+          <div class="card-body tool-card-body">
+
+            <!-- MQTT -->
+            <div class="mb-4">
+              <h6 class="card-title"><i class="fas fa-network-wired"></i> <span data-i18n="form_mqtt">MQTT 配置</span></h6>
+              <div class="row g-2">
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="mqttEnabled">
+                    <label class="form-check-label" data-i18n="form_mqtt_enabled">启用 MQTT</label>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_mqtt_host">主机地址</label>
+                  <input type="text" class="form-control form-control-sm" id="mqttHost" placeholder="192.168.1.100" disabled>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_mqtt_port">端口</label>
+                  <input type="number" class="form-control form-control-sm" id="mqttPort" value="1883" disabled>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_mqtt_user">用户名</label>
+                  <input type="text" class="form-control form-control-sm" id="mqttUser" disabled>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_mqtt_password">密码</label>
+                  <input type="password" class="form-control form-control-sm" id="mqttPassword" disabled>
+                </div>
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- Detector -->
+            <div class="mb-4">
+              <h6 class="card-title"><i class="fas fa-microchip"></i> <span data-i18n="form_detector">检测器配置</span></h6>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_detector_type">检测器类型</label>
+                  <select class="form-select form-select-sm" id="detectorType">
+                    <option value="edgetpu" data-i18n="form_detector_type_coral">Google Coral TPU</option>
+                    <option value="cpu" data-i18n="form_detector_type_cpu">CPU（无加速）</option>
+                  </select>
+                </div>
+                <div class="col-md-6" id="detectorDeviceGroup">
+                  <label class="form-label" data-i18n="form_detector_device">设备</label>
+                  <select class="form-select form-select-sm" id="detectorDevice">
+                    <option value="pci">PCIe</option>
+                    <option value="usb">USB</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- Record -->
+            <div class="mb-4">
+              <h6 class="card-title"><i class="fas fa-circle"></i> <span data-i18n="form_record">全局录制配置</span></h6>
+              <div class="row g-2">
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="recordEnabled" checked>
+                    <label class="form-check-label" data-i18n="form_record_enabled">启用录制</label>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_record_retain_days">保留天数</label>
+                  <input type="number" class="form-control form-control-sm" id="recordRetainDays" value="7" min="1" max="365">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_record_retain_mode">录制模式</label>
+                  <select class="form-select form-select-sm" id="recordMode">
+                    <option value="motion" data-i18n="form_record_mode_motion">运动触发</option>
+                    <option value="all" data-i18n="form_record_mode_all">全部录制</option>
+                    <option value="active_objects" data-i18n="form_record_mode_active">活跃对象</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- FFmpeg -->
+            <div class="mb-4">
+              <h6 class="card-title">
+                <i class="fas fa-film"></i> <span data-i18n="form_ffmpeg">FFmpeg 全局配置</span>
+              </h6>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_ffmpeg_rtsp_transport">RTSP 传输协议</label>
+                  <select class="form-select form-select-sm" id="ffmpegRtspTransport">
+                    <option value="tcp" selected>TCP</option>
+                    <option value="udp">UDP</option>
+                    <option value="http">HTTP</option>
+                    <option value="udp_multicast" data-i18n="form_ffmpeg_transport_udp_multicast">UDP 组播</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" data-i18n="form_ffmpeg_stimeout">RTSP 超时（秒）</label>
+                  <input type="number" class="form-control form-control-sm" id="ffmpegStimeout" value="5" min="0.1" step="0.1">
+                </div>
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="ffmpegAvoidNegativeTs" checked>
+                    <label class="form-check-label" data-i18n="form_ffmpeg_avoid_negative_ts">负时间戳归零</label>
+                  </div>
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="ffmpegFflags" checked>
+                    <label class="form-check-label" data-i18n="form_ffmpeg_fflags">生成时间戳并丢弃损坏包</label>
+                  </div>
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="ffmpegWallclock" checked>
+                    <label class="form-check-label" data-i18n="form_ffmpeg_wallclock">使用系统时钟作为时间戳</label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" data-i18n="form_ffmpeg_custom_args">自定义参数</label>
+                  <textarea class="form-control form-control-sm" id="ffmpegCustomArgs" rows="2" placeholder="-hwaccel vaapi"></textarea>
+                  <small class="text-muted" data-i18n="form_ffmpeg_custom_args_hint"></small>
+                </div>
+              </div>
+            </div>
+
+            <hr>
+
+            <!-- Cameras -->
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="card-title mb-0"><i class="fas fa-camera"></i> <span data-i18n="form_cameras">摄像头配置</span></h6>
+                <button class="btn btn-sm btn-primary" id="btnAddCamera">
+                  <i class="fas fa-plus"></i> <span data-i18n="form_camera_add">添加摄像头</span>
+                </button>
+              </div>
+              <div id="cameraList">
+                <!-- Camera cards will be added here -->
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Preview -->
+      <div class="col-lg-5">
+        <div class="card tool-card h-100">
+          <div class="card-header tool-card-header d-flex justify-content-between align-items-center">
+            <div class="title-group"><i class="fas fa-code"></i> <span data-i18n="preview_title">YAML 预览</span></div>
+            <div class="action-group d-flex align-items-center gap-2">
+              <button class="btn btn-sm btn-outline-secondary" id="btnUpload" title="" data-i18n-attr="title:btn_upload_title">
+                <i class="fas fa-upload"></i> <span data-i18n="btn_upload">上传配置</span>
+              </button>
+              <input type="file" id="fileUpload" accept=".yaml,.yml" style="display:none">
+            </div>
+          </div>
+          <div class="card-body tool-card-body">
+            <div class="yaml-preview" id="yamlPreview"></div>
+            <div class="mt-3 d-grid gap-2">
+              <button class="btn btn-primary" id="btnGenerate">
+                <i class="fas fa-cog"></i> <span data-i18n="btn_generate">生成配置文件</span>
+              </button>
+              <button class="btn btn-success" id="btnDownload" disabled>
+                <i class="fas fa-download"></i> <span data-i18n="btn_download">下载 config.yaml</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Usage Section -->
+    <div class="card tool-card mt-3">
+      <div class="card-body tool-card-body py-3">
+        <h6 class="card-title mb-1"><i class="fas fa-question-circle"></i> <span data-i18n="usage_title">使用说明</span></h6>
+        <p class="card-text mb-0 small" data-i18n="usage_desc"></p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center text-muted mt-3 mb-3" style="font-size: 0.8rem;">
+      <span data-i18n="footer_credit">基于 Frigate 官方文档构建</span> |
+      <a href="https://docs.frigate.video/" target="_blank" data-i18n="footer_frigate_doc">Frigate 官方文档</a>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div id="appToast" class="toast" role="alert">
+      <div class="toast-body d-flex align-items-center gap-2">
+        <i id="toastIcon" class="fas"></i>
+        <span id="toastMessage"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // ========== i18n ==========
+    let currentLang = 'zh-CN';
+    let translations = {};
+
+    async function loadTranslations(lang) {
+      try {
+        const resp = await fetch(`i18n/${lang}.json`);
+        if (!resp.ok) throw new Error(resp.statusText);
+        translations[lang] = await resp.json();
+      } catch (e) {
+        console.error('Failed to load translations:', e);
+      }
+    }
+
+    function t(key) {
+      return (translations[currentLang] && translations[currentLang][key]) || key;
+    }
+
+    function applyTranslations() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (key === 'usage_desc') {
+          el.innerHTML = t(key).replace(/\n/g, '<br>');
+        } else {
+          el.textContent = t(key);
+        }
+      });
+      document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+        const pairs = el.getAttribute('data-i18n-attr').split(',');
+        pairs.forEach(pair => {
+          const [attr, key] = pair.trim().split(':');
+          if (attr && key) el.setAttribute(attr.trim(), t(key.trim()));
+        });
+      });
+    }
+
+    // ========== Toast ==========
+    let toastEl = document.getElementById('appToast');
+    let toastIcon = document.getElementById('toastIcon');
+    let toastMessage = document.getElementById('toastMessage');
+    let bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
+
+    function showToast(messageKey, type) {
+      toastMessage.textContent = t(messageKey);
+      toastIcon.className = 'fas';
+      toastEl.className = 'toast';
+      switch (type) {
+        case 'info':
+          toastIcon.classList.add('fa-info-circle');
+          toastEl.classList.add('text-bg-primary');
+          bsToast = new bootstrap.Toast(toastEl, { delay: -1 });
+          break;
+        case 'success':
+          toastIcon.classList.add('fa-check-circle');
+          toastEl.classList.add('text-bg-success');
+          bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
+          break;
+        case 'danger':
+          toastIcon.classList.add('fa-exclamation-triangle');
+          toastEl.classList.add('text-bg-danger');
+          bsToast = new bootstrap.Toast(toastEl, { delay: 5000 });
+          break;
+      }
+      bsToast.show();
+    }
+
+    // ========== Camera Management ==========
+    let cameraCount = 0;
+
+    function escapeAttr(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    }
+
+    function addCameraCard(data) {
+      const d = data || {};
+      cameraCount++;
+      const id = cameraCount;
+      const card = document.createElement('div');
+      card.className = 'camera-card';
+      card.id = `camera-${id}`;
+      card.innerHTML = `
+        <div class="camera-header">
+          <h6><i class="fas fa-camera"></i> <span data-i18n="form_camera_title">摄像头</span></h6>
+          <div class="d-flex align-items-center gap-2">
+            <div class="form-check form-switch">
+              <input class="form-check-input camera-enabled" type="checkbox" data-id="${id}" ${d.enabled !== false ? 'checked' : ''}>
+              <label class="form-check-label" data-i18n="form_camera_enabled">启用</label>
+            </div>
+            <button class="btn btn-sm btn-outline-danger btn-delete-camera" data-id="${id}">
+              <i class="fas fa-trash"></i> <span data-i18n="form_camera_delete">删除</span>
+            </button>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label" data-i18n="form_camera_name">名称</label>
+          <input type="text" class="form-control form-control-sm camera-name" data-id="${id}" value="${escapeAttr(d.name)}" placeholder="CAM_NAME">
+        </div>
+        <div class="stream-section">
+          <h6><i class="fas fa-video"></i> <span data-i18n="form_camera_record_stream_label">录制流</span></h6>
+          <input type="text" class="form-control form-control-sm camera-record-url" data-id="${id}" value="${escapeAttr(d.recordUrl)}" placeholder="rtsp://admin:password@192.168.1.100:554/stream1">
+        </div>
+        <div class="stream-section">
+          <h6><i class="fas fa-search"></i> <span data-i18n="form_camera_detect_stream_label">检测流</span></h6>
+          <div class="row g-2">
+            <div class="col">
+              <input type="text" class="form-control form-control-sm camera-detect-url" data-id="${id}" value="${escapeAttr(d.detectUrl)}" placeholder="rtsp://admin:password@192.168.1.100:554/stream2">
+            </div>
+            <div class="col-auto">
+              <input type="number" class="form-control form-control-sm camera-detect-width" data-id="${id}" value="${Number(d.detectWidth) || 640}" style="width:80px" placeholder="W">
+            </div>
+            <div class="col-auto">
+              <span class="align-middle">×</span>
+            </div>
+            <div class="col-auto">
+              <input type="number" class="form-control form-control-sm camera-detect-height" data-id="${id}" value="${Number(d.detectHeight) || 360}" style="width:80px" placeholder="H">
+            </div>
+          </div>
+        </div>
+        <div class="mt-2">
+          <div class="form-check form-check-inline">
+            <input class="form-check-input camera-record-enabled" type="checkbox" data-id="${id}" ${d.recordEnabled !== false ? 'checked' : ''}>
+            <label class="form-check-label" data-i18n="form_camera_record">启用录制</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input camera-detect-enabled" type="checkbox" data-id="${id}" ${d.detectEnabled !== false ? 'checked' : ''}>
+            <label class="form-check-label" data-i18n="form_camera_detect">启用检测</label>
+          </div>
+        </div>
+      `;
+      document.getElementById('cameraList').appendChild(card);
+
+      // Bind events
+      card.querySelector('.btn-delete-camera').addEventListener('click', () => {
+        card.remove();
+        updateYamlPreview();
+      });
+
+      card.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('input', updateYamlPreview);
+        input.addEventListener('change', updateYamlPreview);
+      });
+
+      applyTranslations();
+      updateYamlPreview();
+    }
+
+    // ========== Validation ==========
+    function validateConfig(showToast) {
+      // Validate MQTT
+      const mqttEnabled = document.getElementById('mqttEnabled').checked;
+      const mqttHost = document.getElementById('mqttHost').value.trim();
+      if (mqttEnabled && !mqttHost) {
+        if (showToast) showToast('toast_mqtt_host_empty', 'danger');
+        return false;
+      }
+
+      // Collect cameras and validate
+      const cameraNames = [];
+      const cameras = [];
+      let hasError = false;
+
+      document.querySelectorAll('.camera-card').forEach(card => {
+        const name = card.querySelector('.camera-name').value.trim();
+        const enabled = card.querySelector('.camera-enabled').checked;
+        const recordUrl = card.querySelector('.camera-record-url').value.trim();
+        const detectUrl = card.querySelector('.camera-detect-url').value.trim();
+        const detectWidth = card.querySelector('.camera-detect-width').value;
+        const detectHeight = card.querySelector('.camera-detect-height').value;
+        const recordEnabled = card.querySelector('.camera-record-enabled').checked;
+        const detectEnabled = card.querySelector('.camera-detect-enabled').checked;
+
+        cameraNames.push(name);
+
+        if (!name) {
+          hasError = true;
+        }
+        if (!recordUrl) {
+          hasError = true;
+        }
+
+        cameras.push({
+          name, enabled, recordUrl, detectUrl,
+          detectWidth, detectHeight, recordEnabled, detectEnabled
+        });
+      });
+
+      // Check for duplicate camera names
+      const nameSet = new Set();
+      let duplicateName = null;
+      cameraNames.forEach(name => {
+        if (nameSet.has(name)) {
+          duplicateName = name;
+        }
+        nameSet.add(name);
+      });
+
+      if (duplicateName) {
+        if (showToast) showToast('toast_camera_name_duplicate', 'danger');
+        return false;
+      }
+
+      if (hasError) {
+        if (showToast) showToast('toast_camera_name_empty', 'danger');
+        return false;
+      }
+
+      return { cameras, mqttEnabled, mqttHost, mqttPort: document.getElementById('mqttPort').value.trim(), mqttUser: document.getElementById('mqttUser').value.trim(), mqttPassword: document.getElementById('mqttPassword').value.trim(), detectorType: document.getElementById('detectorType').value, detectorDevice: document.getElementById('detectorDevice').value, recordEnabled: document.getElementById('recordEnabled').checked, recordRetainDays: document.getElementById('recordRetainDays').value, recordMode: document.getElementById('recordMode').value };
+    }
+
+    // ========== YAML Generation ==========
+    function yamlQuote(value) {
+      return /^-?\d+(\.\d+)?$/.test(value) ? `'${value}'` : value;
+    }
+
+    function buildGlobalInputArgs() {
+      const args = [];
+      if (document.getElementById('ffmpegAvoidNegativeTs').checked) {
+        args.push('-avoid_negative_ts', 'make_zero');
+      }
+      if (document.getElementById('ffmpegFflags').checked) {
+        args.push('-fflags', '+genpts+discardcorrupt');
+      }
+      const transport = document.getElementById('ffmpegRtspTransport').value;
+      if (transport) {
+        args.push('-rtsp_transport', transport);
+      }
+      const seconds = parseFloat(document.getElementById('ffmpegStimeout').value);
+      if (!isNaN(seconds) && seconds > 0) {
+        args.push('-stimeout', String(Math.round(seconds * 1000000)));
+      }
+      if (document.getElementById('ffmpegWallclock').checked) {
+        args.push('-use_wallclock_as_timestamps', '1');
+      }
+      document.getElementById('ffmpegCustomArgs').value.split('\n').forEach(line => {
+        const arg = line.trim();
+        if (arg) args.push(arg);
+      });
+      return args;
+    }
+
+    function generateYaml(validate = true) {
+      if (validate) {
+        const result = validateConfig(false);
+        if (!result) return null;
+      }
+
+      const mqttEnabled = document.getElementById('mqttEnabled').checked;
+      const mqttHost = document.getElementById('mqttHost').value.trim();
+      const mqttPort = document.getElementById('mqttPort').value.trim();
+      const mqttUser = document.getElementById('mqttUser').value.trim();
+      const mqttPassword = document.getElementById('mqttPassword').value.trim();
+
+      const detectorType = document.getElementById('detectorType').value;
+      const detectorDevice = document.getElementById('detectorDevice').value;
+
+      const recordEnabled = document.getElementById('recordEnabled').checked;
+      const recordRetainDays = document.getElementById('recordRetainDays').value;
+      const recordMode = document.getElementById('recordMode').value;
+
+      let yaml = '';
+
+      // MQTT
+      yaml += '# =========================================\n';
+      yaml += '# MQTT 配置\n';
+      yaml += '# =========================================\n';
+      yaml += 'mqtt:\n';
+      yaml += `  enabled: ${mqttEnabled}\n`;
+      if (mqttEnabled) {
+        yaml += `  host: ${mqttHost}\n`;
+        if (mqttPort) yaml += `  port: ${mqttPort}\n`;
+        if (mqttUser) yaml += `  user: ${mqttUser}\n`;
+        if (mqttPassword) yaml += `  password: ${mqttPassword}\n`;
+      }
+      yaml += '\n';
+
+      // Detector
+      yaml += '# =========================================\n';
+      yaml += '# 检测器配置\n';
+      yaml += '# =========================================\n';
+      yaml += 'detectors:\n';
+      yaml += '  coral:\n';
+      yaml += `    type: ${detectorType}\n`;
+      yaml += `    device: ${detectorDevice}\n`;
+      yaml += '\n';
+
+      // Record
+      yaml += '# =========================================\n';
+      yaml += '# 视频录制配置\n';
+      yaml += '# =========================================\n';
+      yaml += 'record:\n';
+      yaml += `  enabled: ${recordEnabled}\n`;
+      yaml += '  retain:\n';
+      yaml += `    days: ${recordRetainDays}\n`;
+      yaml += `    mode: ${recordMode}\n`;
+      yaml += '\n';
+
+      // FFmpeg
+      yaml += '# =========================================\n';
+      yaml += '# FFmpeg 全局配置\n';
+      yaml += '# =========================================\n';
+      yaml += 'ffmpeg:\n';
+      yaml += '  input_args:\n';
+      buildGlobalInputArgs().forEach(arg => {
+        yaml += `    - ${yamlQuote(arg)}\n`;
+      });
+      yaml += '\n';
+
+      // Collect cameras from validated result or DOM
+      let cameras;
+      if (validate) {
+        const result = validateConfig(false);
+        cameras = result.cameras;
+      } else {
+        cameras = [];
+        document.querySelectorAll('.camera-card').forEach(card => {
+          const name = card.querySelector('.camera-name').value.trim();
+          const enabled = card.querySelector('.camera-enabled').checked;
+          const recordUrl = card.querySelector('.camera-record-url').value.trim();
+          const detectUrl = card.querySelector('.camera-detect-url').value.trim();
+          const detectWidth = card.querySelector('.camera-detect-width').value;
+          const detectHeight = card.querySelector('.camera-detect-height').value;
+          const recordEnabled = card.querySelector('.camera-record-enabled').checked;
+          const detectEnabled = card.querySelector('.camera-detect-enabled').checked;
+          cameras.push({ name, enabled, recordUrl, detectUrl, detectWidth, detectHeight, recordEnabled, detectEnabled });
+        });
+      }
+
+      // Build YAML cameras section
+      yaml += '# =========================================\n';
+      yaml += '# 摄像头配置\n';
+      yaml += '# =========================================\n';
+      yaml += 'cameras:\n';
+
+      if (cameras.length === 0) {
+        yaml += '  # 暂无摄像头配置，请添加摄像头后重新生成\n';
+      } else {
+        cameras.forEach(cam => {
+          yaml += `  ${cam.name}:\n`;
+          yaml += `    enabled: ${cam.enabled}\n`;
+          yaml += '    ffmpeg:\n';
+          yaml += '      inputs:\n';
+          yaml += `        - path: ${cam.recordUrl}\n`;
+          yaml += '          roles:\n';
+          yaml += '            - record\n';
+          if (cam.detectUrl) {
+            yaml += `        - path: ${cam.detectUrl}\n`;
+            yaml += '          roles:\n';
+            yaml += '            - detect\n';
+          }
+          yaml += '      input_args: -rtsp_transport tcp\n';
+          yaml += '    detect:\n';
+          yaml += `      enabled: ${cam.detectEnabled}\n`;
+          yaml += `      width: ${cam.detectWidth}\n`;
+          yaml += `      height: ${cam.detectHeight}\n`;
+          yaml += '    record:\n';
+          yaml += `      enabled: ${cam.recordEnabled}\n`;
+          yaml += '\n';
+        });
+      }
+
+      return yaml;
+    }
+
+    function updateYamlPreview() {
+      const yaml = generateYaml();
+      document.getElementById('yamlPreview').textContent = yaml || '# 请填写配置参数后预览';
+      document.getElementById('btnDownload').disabled = !yaml;
+    }
+
+    // ========== Parse and Populate Config from Uploaded File ==========
+    function parseAndPopulateConfig(config) {
+      // Clear existing camera cards (keep the first one if needed, or remove all)
+      const cameraList = document.getElementById('cameraList');
+      const existingCards = cameraList.querySelectorAll('.camera-card');
+      existingCards.forEach(card => card.remove());
+
+      // Fill MQTT
+      if (config.mqtt) {
+        document.getElementById('mqttEnabled').checked = config.mqtt.enabled === true;
+        const mqttHostInput = document.getElementById('mqttHost');
+        const mqttPortInput = document.getElementById('mqttPort');
+        const mqttUserInput = document.getElementById('mqttUser');
+        const mqttPasswordInput = document.getElementById('mqttPassword');
+
+        if (config.mqtt.host) mqttHostInput.value = config.mqtt.host;
+        if (config.mqtt.port) mqttPortInput.value = config.mqtt.port;
+        if (config.mqtt.user) mqttUserInput.value = config.mqtt.user;
+        if (config.mqtt.password) mqttPasswordInput.value = config.mqtt.password;
+      }
+
+      // Fill Detector
+      if (config.detectors && config.detectors.coral) {
+        const detectorTypeSelect = document.getElementById('detectorType');
+        const detectorDeviceGroup = document.getElementById('detectorDeviceGroup');
+
+        if (config.detectors.coral.type) {
+          detectorTypeSelect.value = config.detectors.coral.type;
+        }
+        if (config.detectors.coral.device) {
+          document.getElementById('detectorDevice').value = config.detectors.coral.device;
+        }
+        detectorDeviceGroup.style.display = detectorTypeSelect.value === 'cpu' ? 'none' : '';
+      }
+
+      // Fill Record
+      if (config.record) {
+        document.getElementById('recordEnabled').checked = config.record.enabled === true;
+        const retain = config.record.retain || {};
+        if (retain.days) {
+          document.getElementById('recordRetainDays').value = retain.days;
+        }
+        const mode = retain.mode || config.record.mode;
+        if (mode) {
+          document.getElementById('recordMode').value = mode;
+        }
+      }
+
+      // Fill FFmpeg
+      if (config.ffmpeg && config.ffmpeg.input_args !== undefined) {
+        parseGlobalInputArgs(config.ffmpeg.input_args);
+      }
+
+      // Process cameras
+      if (config.cameras && typeof config.cameras === 'object') {
+        Object.keys(config.cameras).forEach(key => {
+          addCameraCard(normalizeCameraData(key, config.cameras[key]));
+        });
+      }
+
+      updateYamlPreview();
+    }
+
+    function normalizeCameraData(name, cam) {
+      cam = cam || {};
+      const inputs = (cam.ffmpeg && Array.isArray(cam.ffmpeg.inputs)) ? cam.ffmpeg.inputs : [];
+      const findByRole = role => inputs.find(input => input && Array.isArray(input.roles) && input.roles.includes(role));
+      const recordInput = findByRole('record');
+      const detectInput = findByRole('detect');
+      return {
+        name,
+        enabled: cam.enabled !== false,
+        recordUrl: recordInput ? (recordInput.path || '') : '',
+        detectUrl: detectInput ? (detectInput.path || '') : '',
+        detectWidth: (cam.detect && cam.detect.width) || 640,
+        detectHeight: (cam.detect && cam.detect.height) || 360,
+        recordEnabled: !(cam.record && cam.record.enabled === false),
+        detectEnabled: !(cam.detect && cam.detect.enabled === false)
+      };
+    }
+
+    function parseGlobalInputArgs(inputArgs) {
+      let args = [];
+      if (Array.isArray(inputArgs)) {
+        args = inputArgs.map(String);
+      } else if (typeof inputArgs === 'string') {
+        args = inputArgs.trim().split(/\s+/).filter(Boolean);
+      }
+
+      // Frigate 的 input_args 为 argv 风格列表：每个元素一个 token，
+      // 已知标志后若紧跟非 "-" 开头的 token 则视为其取值。
+      const KNOWN_FLAGS = ['-avoid_negative_ts', '-fflags', '-rtsp_transport', '-stimeout', '-use_wallclock_as_timestamps'];
+      const seen = {};
+      const extra = [];
+      for (let i = 0; i < args.length; i++) {
+        if (KNOWN_FLAGS.includes(args[i])) {
+          const next = args[i + 1];
+          const value = (next !== undefined && !next.startsWith('-')) ? next : '';
+          seen[args[i]] = value;
+          if (value) i++;
+        } else {
+          extra.push(args[i]);
+        }
+      }
+
+      document.getElementById('ffmpegAvoidNegativeTs').checked = '-avoid_negative_ts' in seen;
+      document.getElementById('ffmpegFflags').checked = '-fflags' in seen;
+      document.getElementById('ffmpegWallclock').checked = '-use_wallclock_as_timestamps' in seen;
+
+      const transport = seen['-rtsp_transport'];
+      document.getElementById('ffmpegRtspTransport').value =
+        ['tcp', 'udp', 'http', 'udp_multicast'].includes(transport) ? transport : 'tcp';
+
+      const micro = parseInt(seen['-stimeout'], 10);
+      document.getElementById('ffmpegStimeout').value =
+        !isNaN(micro) && micro > 0 ? Math.round(micro / 100000) / 10 : 5;
+
+      document.getElementById('ffmpegCustomArgs').value = extra.join('\n');
+    }
+
+    // ========== Event Listeners ==========
+    document.getElementById('mqttEnabled').addEventListener('change', function() {
+      const disabled = !this.checked;
+      document.getElementById('mqttHost').disabled = disabled;
+      document.getElementById('mqttPort').disabled = disabled;
+      document.getElementById('mqttUser').disabled = disabled;
+      document.getElementById('mqttPassword').disabled = disabled;
+      updateYamlPreview();
+    });
+
+    document.getElementById('detectorType').addEventListener('change', function() {
+      document.getElementById('detectorDeviceGroup').style.display =
+        this.value === 'cpu' ? 'none' : '';
+      updateYamlPreview();
+    });
+
+    document.getElementById('btnAddCamera').addEventListener('click', () => addCameraCard());
+
+    document.getElementById('btnGenerate').addEventListener('click', function() {
+      const result = validateConfig(true);
+      if (result) {
+        showToast('toast_generate_success', 'success');
+        document.getElementById('btnDownload').disabled = false;
+      }
+    });
+
+    document.getElementById('btnDownload').addEventListener('click', function() {
+      const result = validateConfig(true);
+      if (!result) return;
+
+      const yaml = generateYaml(false);
+      if (!yaml) return;
+
+      const blob = new Blob([yaml], { type: 'text/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'config.yaml';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('toast_download_success', 'success');
+    });
+
+    // Bind all form inputs for real-time preview
+    document.querySelectorAll('#mqttHost, #mqttPort, #mqttUser, #mqttPassword, #detectorType, #detectorDevice, #recordEnabled, #recordRetainDays, #recordMode, #ffmpegRtspTransport, #ffmpegStimeout, #ffmpegAvoidNegativeTs, #ffmpegFflags, #ffmpegWallclock, #ffmpegCustomArgs').forEach(el => {
+      el.addEventListener('input', updateYamlPreview);
+      el.addEventListener('change', updateYamlPreview);
+    });
+
+    // ========== Language Switch ==========
+    const langLabel = document.getElementById('lang-label');
+    document.querySelectorAll('.dropdown-item[data-lang]').forEach(item => {
+      item.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const lang = item.getAttribute('data-lang');
+        if (lang === currentLang) return;
+        currentLang = lang;
+        document.documentElement.lang = currentLang === 'zh-CN' ? 'zh-CN' : 'en';
+        document.title = t('app_title');
+        langLabel.textContent = currentLang === 'en' ? 'English' : '中文';
+        applyTranslations();
+        updateYamlPreview();
+      });
+    });
+
+    // ========== Upload Config File ==========
+    document.getElementById('btnUpload').addEventListener('click', function() {
+      document.getElementById('fileUpload').click();
+    });
+
+    document.getElementById('fileUpload').addEventListener('change', function() {
+      const file = this.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const yamlText = e.target.result;
+        try {
+          const config = jsyaml.load(yamlText);
+          parseAndPopulateConfig(config);
+          showToast('toast_upload_success', 'success');
+        } catch (err) {
+          showToast('toast_upload_fail', 'danger');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // ========== Init ==========
+    (async function init() {
+      await loadTranslations('zh-CN');
+      await loadTranslations('en');
+      applyTranslations();
+      document.title = t('app_title');
+      addCameraCard();
+      updateYamlPreview();
+    })();
+  </script>
+</body>
+</html>
