@@ -38,6 +38,161 @@ web/<工具名>/
 - 常用左右分栏：左列为数据 / 选项树，右列为「已选集 + 主操作按钮」。
 - 左右列卡片可设置 `h-100` 等高与固定 `max-height` 的内滚动区域，保持视觉对齐。
 
+## 通用样式规范 (web-common.css)
+
+所有 Web 工具**必须**遵循 `doc/交互规范/web-common.css`（当前版本 `1.0`）定义的统一样式。为保证工具可独立运行与静态部署友好，采用**外链 CSS + 复制分发**方式：每个工具在 `style/web-common.css` 放置副本，HTML 通过 `<link>` 引用。
+
+### 版本管理
+
+- 统一维护 `doc/交互规范/web-common.css`，版本格式 `主版本.次版本`，当前 `1.0`。
+- CSS 文件首行标注 `/* web-common.css v1.0 */`。
+- 升级 CSS 版本时：
+  1. 更新源文件版本号与内容
+  2. 复制到各工具 `style/web-common.css`
+  3. 同步更新 HTML 中的缓存破坏参数 `?v=X.Y`
+
+### 目录结构
+
+每个工具目录结构为：
+
+```
+web/<工具名>/
+  index.html
+  style/
+    web-common.css     ← 通用样式副本
+  i18n/
+    zh-CN.json
+    en.json
+```
+
+### 引用方式
+
+在 `<head>` 中按顺序引入：
+
+```html
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>...</title>
+  <!-- Bootstrap -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <!-- Font Awesome (jsdelivr) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+  <!-- 通用样式（带版本参数防缓存） -->
+  <link rel="stylesheet" href="style/web-common.css?v=1.0">
+  <!-- 工具专属样式（内联） -->
+  <style>
+    /* Tool-specific styles for xxx */
+    .custom-class { ... }
+  </style>
+</head>
+```
+
+- **加载顺序**：Bootstrap → Font Awesome → web-common.css → 工具内联 style
+- **缓存破坏**：`href="style/web-common.css?v=1.0"`，版本号与 CSS 文件头注释保持一致
+
+### 工具专属样式
+
+工具特有的样式（如 `.camera-card`、`.drop-zone`、`.tree-container` 等）继续使用内联 `<style>` 块，置于通用样式之后，避免污染通用规范。
+
+### 同步流程
+
+更新 `doc/交互规范/web-common.css` 后，将其复制到各工具的 `style/web-common.css`，并同步更新 HTML 中的缓存参数 `?v=X.Y`。新增工具时同理在 `style/` 目录放置副本并引用。
+
+### 页面结构约定
+
+#### 1. Header 结构 (`.tool-header`)
+
+```html
+<body>
+  <!-- Header 直接置于 body 下，全宽展示 -->
+  <header class="tool-header">
+    <div class="container">
+      <div class="title-group">
+        <h1><i class="fas fa-xxx"></i> <span data-i18n="app_title">工具标题</span></h1>
+        <span class="badge bg-dark badge-version"><i class="fas fa-tag"></i> 1.0</span>
+        <!-- 可选功能 badge，平级排布 -->
+        <span class="badge bg-info badge-feature"><i class="fas fa-xxx"></i><span data-i18n="badge_xxx">功能名</span></span>
+      </div>
+      <!-- 可选描述文案 -->
+      <div class="desc-group"><small class="text-muted" data-i18n="app_desc">工具描述</small></div>
+      <div class="lang-group">语言下拉</div>
+    </div>
+  </header>
+
+  <!-- 主工作区单独用 container 包裹 -->
+  <div class="container py-3">
+    ...
+  </div>
+</body>
+```
+
+- **布局**：`.tool-header` 全宽（背景色+底边框），内部 `.container` 用 `d-flex justify-content-between align-items-center flex-wrap gap-2` 实现左右分布。
+- **左侧 `.title-group`**：`h1`(图标+标题) + `.badge-version`(版本号) + `.badge-feature*`(功能标签)，同一 flex 行，wrap 换行。
+- **版本标签**：`.badge-version` + `bg-dark` + `fa-tag` 图标，字号 `0.75rem`，与标题平级。
+- **功能标签**：`.badge-feature` + 语义色(`bg-info`/`bg-secondary`/`bg-success`等) + 图标 + 文案，字号 `0.7rem`，可翻译。
+- **描述文案**：可选，置于 `.desc-group`，全宽、次行显示，`order: 2`，移动端 `order: 3` 置底。
+- **语言下拉**：置于 `.lang-group`，右侧对齐，`order: 1`，移动端 `order: 2`。
+
+#### 2. 卡片结构 (`.tool-card`)
+
+```html
+<div class="card tool-card h-100">
+  <div class="card-header tool-card-header d-flex justify-content-between align-items-center">
+    <div class="title-group"><i class="fas fa-xxx"></i> <span data-i18n="xxx_title">卡片标题</span></div>
+    <div class="action-group">操作控件(搜索/只读badge/按钮等)</div>
+  </div>
+  <div class="card-body tool-card-body">...</div>
+</div>
+```
+
+- **Header 必须无背景色**（`background: transparent`），仅保留底边框 `border-bottom: 1px solid var(--tool-border)`。
+- **必须包含图标+标题**（`.title-group`），左侧对齐。
+- **操作区统一置于 Header 右侧** `.action-group` (flex 末尾)，包含搜索输入框、只读 badge、按钮等。
+- **Body** 使用 `.tool-card-body` 统一内边距 `1rem`。
+
+#### 3. 图标使用规范
+
+所有 Font Awesome `<i>` 元素必须遵循最小化原则：
+
+| 要求 | 说明 |
+|------|------|
+| **仅保留两个 class** | `fas` + `fa-xxx`（图标名），禁止添加颜色（`text-*`）、边距（`me-*`/`ms-*`/`mb-*`）、尺寸（`fa-2x` 等）、显示类（`d-block`/`d-inline-block`）等额外 class |
+| **颜色由上下文决定** | 图标继承父元素 `color`，标题区文本色、按钮文本色、muted 文本色等由 Bootstrap 语义类控制 |
+| **间距由布局控制** | 图标与文字间距通过父容器 flex/gap 或 CSS 变量统一管理，不在 `<i>` 上写死 `me-*` |
+| **空状态图标** | 需要大号展示时，包裹在 `<div class="icon-wrapper mb-2">` 等容器中，由容器控制尺寸与间距，`<i>` 本身保持纯净 |
+| **JS 动态生成的图标** | 同理，`innerHTML` 拼接时仅输出 `<i class="fas fa-xxx"></i>`，样式交由外层容器 |
+
+**示例对比：**
+
+```html
+<!-- ❌ 违规 -->
+<i class="fas fa-magic text-primary me-3"></i>
+<i class="fas fa-inbox fa-2x d-block mb-2"></i>
+<i class="fas fa-folder me-1 text-warning"></i>
+
+<!-- ✅ 合规 -->
+<i class="fas fa-magic"></i>
+<div class="mb-2"><i class="fas fa-inbox"></i></div>
+<i class="fas fa-folder"></i>
+```
+
+#### 4. Badge 使用规范
+
+| 类型 | 类名 | 颜色 | 图标 | 说明 |
+|------|------|------|------|------|
+| 版本号 | `.badge-version` | `bg-dark` | `fa-tag` | 固定格式 `1.0`，不翻译 |
+| 功能标签 | `.badge-feature` | 语义色 | 任意 | 可翻译，平级追加 |
+
+#### 5. 多语言资源
+
+- 新增 `app_desc` 键（所有工具），描述文案随语言切换。
+- 功能 badge 文案使用 `data-i18n` 翻译。
+
+#### 6. 响应式断点
+
+- 统一 `768px`，Header 在移动端自动换行：标题行→语言下拉→描述文案。
+
 ## 版本号
 
 - 版本号格式：`主版本.次版本`。
@@ -127,6 +282,7 @@ web/<工具名>/
 | Bootstrap CSS | 5.3.0 | `https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css` |
 | Bootstrap JS Bundle | 5.3.0 | `https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js` |
 | Font Awesome CSS | 6.4.0 | `https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css` |
+| js-yaml | 4.1.0 | `https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js` |
 
 约定：
 - 统一版本组合 `bootstrap@5.3.0` + `fontawesome-free@6.4.0`。

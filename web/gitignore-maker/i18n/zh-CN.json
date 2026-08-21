@@ -1,5 +1,6 @@
 {
   "title": ".gitignore 生成器",
+  "app_desc": "从 GitHub 官方模板库生成 .gitignore 文件",
   "info_source_title": "数据来源",
   "info_source": "数据来源于 <a href=\"https://github.com/github/gitignore\" target=\"_blank\">github/gitignore</a>，纯前端实现，无后端请求。",
   "info_usage_title": "使用方法",

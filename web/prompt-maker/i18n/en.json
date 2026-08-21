@@ -1,9 +1,11 @@
 {
   "title": "Prompt Maker",
+  "app_desc": "Prompt generator with hierarchical categories, param defaults, and smart replacement",
   "badge_smart_params": "Smart Param Replacement",
   "badge_hierarchy": "Hierarchical Categories",
   "badge_dynamic_defaults": "Dynamic Params + Defaults",
   "output_title": "Prompt Output",
+  "sidebar_title": "Dictionary & Preview",
   "output_placeholder": "Generated prompt text appears here\nYou can adjust or modify the output",
   "lib_title": "Dictionary File",
   "clear_lib": "Clear",

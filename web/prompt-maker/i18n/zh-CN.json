@@ -1,9 +1,11 @@
 {
   "title": "提示生成工具",
+  "app_desc": "支持层级分类、参数默认值与智能替换的提示词生成工具",
   "badge_smart_params": "智能参数替换",
   "badge_hierarchy": "层级分类",
   "badge_dynamic_defaults": "动态参数+默认值",
   "output_title": "提示词输出",
+  "sidebar_title": "词库与预览",
   "output_placeholder": "生成的提示文本会显示在这里\n可手动调整或修改生成的内容",
   "lib_title": "词库文件",
   "clear_lib": "清空",

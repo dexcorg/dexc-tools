@@ -1,5 +1,6 @@
 {
   "title": ".gitignore Generator",
+  "app_desc": "Generate .gitignore from GitHub official template library",
   "info_source_title": "Data Source",
   "info_source": "Data comes from <a href=\"https://github.com/github/gitignore\" target=\"_blank\">github/gitignore</a>. Pure frontend, no backend requests.",
   "info_usage_title": "Usage",

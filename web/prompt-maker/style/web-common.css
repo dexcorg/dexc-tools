@@ -1,0 +1,129 @@
+/* web-common.css v1.0 - DEXC Tools 通用 Web 样式规范 */
+
+/* ===== CSS 变量 ===== */
+:root {
+  --tool-primary: #0d6efd;
+  --tool-secondary: #6c757d;
+  --tool-success: #198754;
+  --tool-danger: #dc3545;
+  --tool-warning: #ffc107;
+  --tool-info: #0dcaf0;
+  --tool-dark: #212529;
+  --tool-light: #f8f9fa;
+  --tool-border: #dee2e6;
+  --tool-bg: #f5f5f5;
+  --tool-card-bg: #fff;
+  --tool-radius: 8px;
+  --tool-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+  --tool-font-sm: 0.875rem;
+  --tool-font-base: 1rem;
+  --tool-font-lg: 1.25rem;
+  --tool-gap: 0.5rem;
+  --tool-padding: 1rem;
+}
+
+/* ===== 基础重置 ===== */
+body {
+  background: var(--tool-bg);
+}
+
+/* ===== Header 统一结构 ===== */
+.tool-header {
+  background: var(--tool-card-bg);
+  border-bottom: 1px solid var(--tool-border);
+  padding: 12px 0;
+}
+.tool-header .container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--tool-gap);
+}
+.tool-header .title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--tool-gap);
+  flex-wrap: wrap;
+}
+.tool-header h1 {
+  font-size: var(--tool-font-lg);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--tool-gap);
+}
+.tool-header .badge-version {
+  font-size: 0.75rem;
+}
+.tool-header .badge-feature {
+  font-size: 0.75rem;
+}
+.tool-header .desc-group {
+  width: 100%;
+  order: 2;
+  margin-top: 4px;
+}
+.tool-header .desc-group small {
+  color: var(--tool-secondary);
+}
+.tool-header .lang-group {
+  order: 1;
+}
+
+/* ===== 卡片统一结构 ===== */
+.tool-card {
+  border: 1px solid var(--tool-border);
+  border-radius: var(--tool-radius);
+  background: var(--tool-card-bg);
+}
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--tool-border);
+  background: transparent;
+  font-weight: 600;
+}
+.tool-card-header .title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--tool-gap);
+}
+.tool-card-header .action-group {
+  display: flex;
+  align-items: center;
+  gap: var(--tool-gap);
+}
+.tool-card-body {
+  padding: 1rem;
+}
+
+/* ===== Badge 统一 ===== */
+.badge-version {
+  background: var(--tool-dark);
+}
+.badge-feature {
+  /* 语义色由使用方指定 bg-info/bg-secondary/bg-success 等 */
+}
+
+/* ===== Toast 容器 ===== */
+.toast-container {
+  z-index: 9999;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .tool-header .desc-group {
+    order: 3;
+  }
+  .tool-header .lang-group {
+    order: 2;
+    width: auto;
+  }
+  .tool-header .title-group {
+    width: 100%;
+    order: 1;
+  }
+}
