@@ -52,9 +52,9 @@ python3 -m venv .venv
 
 ## 交互规范（`doc/`）
 
-- [命令行工具统一交互规范](doc/交互规范/cli.md)
-- [Python 工具统一交互规范](doc/交互规范/python.md)
-- [Web 工具统一交互规范](doc/交互规范/web.md)
+- [命令行工具统一交互规范](doc/standard/cli.md)
+- [Python 工具统一交互规范](doc/standard/python.md)
+- [Web 工具统一交互规范](doc/standard/web.md)
 
 各规范均包含工具版本号标注的相关约定。
 

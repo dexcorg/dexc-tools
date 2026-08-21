@@ -40,11 +40,11 @@ web/<工具名>/
 
 ## 通用样式规范 (web-common.css)
 
-所有 Web 工具**必须**遵循 `doc/交互规范/web-common.css`（当前版本 `1.0`）定义的统一样式。为保证工具可独立运行与静态部署友好，采用**外链 CSS + 复制分发**方式：每个工具在 `style/web-common.css` 放置副本，HTML 通过 `<link>` 引用。
+所有 Web 工具**必须**遵循 `doc/standard/web-common.css`（当前版本 `1.0`）定义的统一样式。为保证工具可独立运行与静态部署友好，采用**外链 CSS + 复制分发**方式：每个工具在 `style/web-common.css` 放置副本，HTML 通过 `<link>` 引用。
 
 ### 版本管理
 
-- 统一维护 `doc/交互规范/web-common.css`，版本格式 `主版本.次版本`，当前 `1.0`。
+- 统一维护 `doc/standard/web-common.css`，版本格式 `主版本.次版本`，当前 `1.0`。
 - CSS 文件首行标注 `/* web-common.css v1.0 */`。
 - 升级 CSS 版本时：
   1. 更新源文件版本号与内容
@@ -97,7 +97,7 @@ web/<工具名>/
 
 ### 同步流程
 
-更新 `doc/交互规范/web-common.css` 后，将其复制到各工具的 `style/web-common.css`，并同步更新 HTML 中的缓存参数 `?v=X.Y`。新增工具时同理在 `style/` 目录放置副本并引用。
+更新 `doc/standard/web-common.css` 后，将其复制到各工具的 `style/web-common.css`，并同步更新 HTML 中的缓存参数 `?v=X.Y`。新增工具时同理在 `style/` 目录放置副本并引用。
 
 ### 页面结构约定
 
