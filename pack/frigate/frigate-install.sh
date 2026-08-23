@@ -152,7 +152,7 @@ if [ -z "$DISK_NAME" ]; then
 fi
 
 # 卸载已挂载的分区
-EXISTING_PARTS=$(lsblk -no NAME,MOUNTPOINT "/dev/$SELECTED_DISK" 2>/dev/null | awk '$2!="" && $2!="-" {print $1}')
+EXISTING_PARTS=$(lsblk -rno NAME,MOUNTPOINT "/dev/$SELECTED_DISK" 2>/dev/null | awk '$2!="" && $2!="-" {print $1}')
 for part in $EXISTING_PARTS; do
   MOUNT_PT=$(lsblk -no MOUNTPOINT "/dev/$part" 2>/dev/null | head -1)
   if [ -n "$MOUNT_PT" ] && [ "$MOUNT_PT" != "-" ]; then
@@ -174,18 +174,18 @@ ok "GPT 分区表创建完成"
 # 创建分区
 info "创建 EXT4 分区..."
 sudo parted "/dev/$SELECTED_DISK" --script mkpart primary ext4 0% 100%
+sudo partprobe "/dev/$SELECTED_DISK"
 sleep 2
 ok "分区创建完成"
 
-# 格式化
-PART_NAME="${SELECTED_DISK}1"
-if [ ! -b "/dev/$PART_NAME" ]; then
-  # 尝试使用设备映射名称
-  PART_NAME="${SELECTED_DISK}-part1"
+# 查找实际分区设备名（原始模式解析，避免树形前缀）
+ACTUAL_PART=$(lsblk -rno NAME,TYPE "/dev/$SELECTED_DISK" 2>/dev/null | awk '$2=="part"{print $1}' | head -n 1)
+if [ -z "$ACTUAL_PART" ] || [ ! -b "/dev/$ACTUAL_PART" ]; then
+  error "未找到新创建的分区，请检查磁盘"
+  echo "[结束] 按回车键退出..."
+  read
+  exit 1
 fi
-
-# 查找实际分区设备名
-ACTUAL_PART=$(lsblk -no NAME "/dev/$SELECTED_DISK" 2>/dev/null | tail -1 | xargs)
 info "格式化分区 /dev/$ACTUAL_PART 为 EXT4..."
 sudo mkfs.ext4 -F "/dev/$ACTUAL_PART"
 ok "格式化完成"
@@ -430,7 +430,7 @@ echo "  配置目录：/mnt/$DISK_NAME/frigate/config"
 echo "  存储目录：/mnt/$DISK_NAME/frigate/storage"
 echo ""
 echo "  [重要] 请执行以下命令获取 admin 密码："
-echo "    docker logs $CONTAINER_NAME 2>&1 | grep 'admin'"
+echo "    docker logs $CONTAINER_NAME 2>&1 | grep 'Password'"
 echo ""
 echo "  [下一步] 请使用 frigate-config 工具生成 config.yaml 配置文件，"
 echo "  然后上传至 /mnt/$DISK_NAME/frigate/config/ 目录并重启容器。"
