@@ -63,7 +63,7 @@ rem ---- step A: ensure no BOM in target file (repo forbids BOM) ----
 
 rem ---- step B: detect PowerShell major version ----
 set "VER="
-for /f "usebackq delims=" %%v in (`"%PS%" -NoProfile -Command "[int]$PSVersionTable.PSVersion.Major"`) do set "VER=%%v"
+for /f "delims=" %%v in ('"%PS%" -NoProfile -Command "[int]($PSVersionTable.PSVersion.Major)"') do set "VER=%%v"
 if not defined VER set "VER=5"
 echo PS version: %VER%
 
