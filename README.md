@@ -19,6 +19,7 @@
 按系统类型归档，新增工具直接放入对应目录，无需修改本文档：
 
 - `cli/macos/`：macOS 工具（`.command`，需 `chmod +x`）
+- `cli/linux/`：Linux 工具（`.sh`，需 `chmod +x`）
 - `cli/windows/`：Windows 工具（`.ps1`，经 `PSRunner.cmd` 启动）
 
 > Windows 侧工具统一经 `PSRunner.cmd` 拖拽或输入路径运行，详见交互规范。
