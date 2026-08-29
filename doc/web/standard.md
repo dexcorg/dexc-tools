@@ -38,17 +38,17 @@ web/<工具名>/
 - 常用左右分栏：左列为数据 / 选项树，右列为「已选集 + 主操作按钮」。
 - 左右列卡片可设置 `h-100` 等高与固定 `max-height` 的内滚动区域，保持视觉对齐。
 
-## 通用样式规范 (web-common.css)
+## 通用样式规范 (common.css)
 
-所有 Web 工具**必须**遵循 `doc/standard/web-common.css`（当前版本 `1.0`）定义的统一样式。为保证工具可独立运行与静态部署友好，采用**外链 CSS + 复制分发**方式：每个工具在 `style/web-common.css` 放置副本，HTML 通过 `<link>` 引用。
+所有 Web 工具**必须**遵循 `doc/web/common.css`（当前版本 `1.0`）定义的统一样式。为保证工具可独立运行与静态部署友好，采用**外链 CSS + 复制分发**方式：每个工具在 `style/common.css` 放置副本，HTML 通过 `<link>` 引用。
 
 ### 版本管理
 
-- 统一维护 `doc/standard/web-common.css`，版本格式 `主版本.次版本`，当前 `1.0`。
-- CSS 文件首行标注 `/* web-common.css v1.0 */`。
+- 统一维护 `doc/web/common.css`，版本格式 `主版本.次版本`，当前 `1.0`。
+- CSS 文件首行标注 `/* common.css v1.0 */`。
 - 升级 CSS 版本时：
   1. 更新源文件版本号与内容
-  2. 复制到各工具 `style/web-common.css`
+  2. 复制到各工具 `style/common.css`
   3. 同步更新 HTML 中的缓存破坏参数 `?v=X.Y`
 
 ### 目录结构
@@ -59,7 +59,7 @@ web/<工具名>/
 web/<工具名>/
   index.html
   style/
-    web-common.css     ← 通用样式副本
+    common.css     ← 通用样式副本
   i18n/
     zh-CN.json
     en.json
@@ -79,7 +79,7 @@ web/<工具名>/
   <!-- Font Awesome (jsdelivr) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
   <!-- 通用样式（带版本参数防缓存） -->
-  <link rel="stylesheet" href="style/web-common.css?v=1.0">
+  <link rel="stylesheet" href="style/common.css?v=1.0">
   <!-- 工具专属样式（内联） -->
   <style>
     /* Tool-specific styles for xxx */
@@ -88,8 +88,8 @@ web/<工具名>/
 </head>
 ```
 
-- **加载顺序**：Bootstrap → Font Awesome → web-common.css → 工具内联 style
-- **缓存破坏**：`href="style/web-common.css?v=1.0"`，版本号与 CSS 文件头注释保持一致
+- **加载顺序**：Bootstrap → Font Awesome → common.css → 工具内联 style
+- **缓存破坏**：`href="style/common.css?v=1.0"`，版本号与 CSS 文件头注释保持一致
 
 ### 工具专属样式
 
@@ -97,7 +97,7 @@ web/<工具名>/
 
 ### 同步流程
 
-更新 `doc/standard/web-common.css` 后，将其复制到各工具的 `style/web-common.css`，并同步更新 HTML 中的缓存参数 `?v=X.Y`。新增工具时同理在 `style/` 目录放置副本并引用。
+更新 `doc/web/common.css` 后，将其复制到各工具的 `style/common.css`，并同步更新 HTML 中的缓存参数 `?v=X.Y`。新增工具时同理在 `style/` 目录放置副本并引用。
 
 ### 页面结构约定
 
