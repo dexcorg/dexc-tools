@@ -41,6 +41,12 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+Windows 侧工具统一经 `python/PYRunner.cmd` 拖拽或输入路径运行（详见交互规范）：启动器自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本。
+
+macOS 侧工具统一经 `python/PYRunner.command` 拖拽或输入路径运行：功能与 Windows 侧一致，自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本（需 `chmod +x`）。
+
+Linux 侧工具统一经 `python/PYRunner.sh` 输入路径运行：功能与 Windows/macOS 侧一致，自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本（需 `chmod +x`）。
+
 每个工具的直接说明文档为与工具同名的 `.md` 文件（如 `python/llm-dir-translate.md`）。
 
 ---

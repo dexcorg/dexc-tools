@@ -14,6 +14,39 @@
 2. **依赖清单**：依赖统一维护在 `python/requirements.txt`，多个工具可共用同一份清单。
 3. **运行方式**：统一通过 `.venv/bin/python <工具名>.py` 运行，禁止依赖全局环境。
 
+### Windows 启动与运行
+
+- Windows 侧 `.py` 工具统一经启动器 `python/PYRunner.cmd` 运行，三种方式均可：
+  - **方式一（拖拽）**：把 `.py` 文件拖到 `PYRunner.cmd` 上直接执行。
+  - **方式二（双击启动与选单）**：双击启动 `PYRunner.cmd`，自动探测 Python、按需创建 `.venv` 并安装依赖，随后扫描并列出同目录下所有 `.py` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.py` 路径，或输入 `q`/直接回车退出。
+  - **方式三（命令行传参）**：`PYRunner.cmd "script.py" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
+  - 启动器所有执行路径（成功/失败/取消）末尾都有 `pause`，窗口不会一闪而过。
+- **编码约束**：`PYRunner.cmd` 遵循启动器约定，内容**纯 ASCII + CRLF**，交互标签使用英文（`[Input]`/`[End]`），避免中文乱码与 `goto`/标签异常。
+- **运行约定**：启动器自动探测 `python`/`python3`，缺 `.venv\Scripts\python.exe` 时用系统 Python 创建 `.venv`，并执行 `pip install -r requirements.txt`（幂等，既检查又安装）。运行目标时使用 `.venv\Scripts\python.exe -X utf8 -u`，并设置 `chcp 65001` / `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 保证中文输出不乱码。
+- `.py` 源文件读取无 BOM 问题（Python 原生按 UTF-8 读取），无需 `PSRunner.cmd` 那套瞬时增删 BOM 的处理。
+
+### macOS 启动与运行
+
+- macOS 侧 `.py` 工具统一经启动器 `python/PYRunner.command` 运行，三种方式均可：
+  - **方式一（拖拽）**：把 `.py` 文件拖到 `PYRunner.command` 上直接执行。
+  - **方式二（双击启动与选单）**：双击启动 `PYRunner.command`，自动探测 Python、按需创建 `.venv` 并安装依赖，随后扫描并列出同目录下所有 `.py` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.py` 路径，或输入 `q`/直接回车退出。
+  - **方式三（命令行传参）**：`PYRunner.command "script.py" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
+  - 启动器所有执行路径（成功/失败/取消）末尾都等待回车确认，窗口不会一闪而过。
+- **文件规范**：`PYRunner.command` 遵循 `.command` 规范，UTF-8 无 BOM、LF、首行 `#!/bin/bash`、需 `chmod +x`。
+- **运行约定**：启动器自动探测 `python3`/`python`，缺 `.venv/bin/python` 时用系统 Python 创建 `.venv`，并执行 `pip install -r requirements.txt`（幂等，既检查又安装）。运行目标时使用 `.venv/bin/python -u`，并设置 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 兜底保证中文输出不乱码。
+- **交互语言**：macOS 终端无 Windows 乱码问题，`PYRunner.command` 使用中文交互并遵循统一前缀规范（`[输入]`/`[结束]` 等），与其它 macOS `.command` 工具一致。
+
+### Linux 启动与运行
+
+- Linux 侧 `.py` 工具统一经启动器 `python/PYRunner.sh` 运行，三种方式均可：
+  - **方式一（参数传入）**：`./PYRunner.sh /path/to/script.py` 直接执行。
+  - **方式二（直接运行选单）**：在 `python` 目录执行 `./PYRunner.sh`，自动探测 Python、按需创建 `.venv` 并安装依赖，随后扫描并列出同目录下所有 `.py` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.py` 路径，或输入 `q`/直接回车退出。
+  - **方式三（命令行传参）**：`PYRunner.sh "script.py" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
+  - 启动器所有执行路径（成功/失败/取消）末尾都等待回车确认，窗口不会一闪而过。
+- **文件规范**：`PYRunner.sh` 遵循 `.sh` 规范，UTF-8 无 BOM、LF、首行 `#!/bin/bash`、需 `chmod +x`。
+- **运行约定**：启动器自动探测 `python3`/`python`，缺 `.venv/bin/python` 时用系统 Python 创建 `.venv`，并执行 `pip install -r requirements.txt`（幂等，既检查又安装）。运行目标时使用 `.venv/bin/python -u`，并设置 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 兜底保证中文输出不乱码。
+- **交互语言**：Linux 终端无 Windows 乱码问题，`PYRunner.sh` 使用中文交互并遵循统一前缀规范（`[输入]`/`[结束]` 等），与其它 Linux `.sh` 工具一致。
+
 ## 核心原则
 
 1. **启动不立即执行**：先展示适用场景、功能说明、操作方式，等待用户输入后再执行。
