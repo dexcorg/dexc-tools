@@ -1,6 +1,6 @@
 # DEXC Tools｜命令行工具统一交互规范
 
-本规范用于约束 `cli` 目录下所有命令行脚本（macOS `.command`、Windows `.ps1`）的交互风格，确保不同系统下的操作体验一致。
+本规范用于约束 `cli` 目录下所有命令行脚本的交互风格：系统脚本（macOS `.command`、Windows `.ps1`、Linux `.sh`）与 Python 脚本（`cli/python` 下的 `.py`）。Python 脚本视为特殊的 CLI 脚本，交互约定与系统脚本保持一致，并补充 Python 独有的环境与运行约定。本规范确保不同系统下的操作体验一致。
 
 ## 核心原则
 
@@ -8,7 +8,7 @@
 2. **参数先收齐再执行**：需要多个参数时，逐个输入，全部收集后回显确认，再执行。
 3. **路径支持拖拽输入**：允许用户拖动文件/目录到终端，脚本自动规整引号与转义。
 4. **分步骤输出进度**：每个步骤结束后输出步骤结果与整体进度。
-5. **结束等待确认**：执行结果汇总后，等待用户回车才结束，禁止立即退出。
+5. **结束等待确认**：执行结果汇总后，等待用户回车才结束，禁止立即退出（非交互模式下除外，见"结束确认"）。
 
 ## 启动说明模板
 
@@ -17,6 +17,7 @@
 ```
 =========================================
   <工具名称>
+  版本 1.0
 =========================================
 [适用场景]
 说明本脚本适用于什么场景。
@@ -57,12 +58,12 @@
 | `[失败]` | 失败 | 单步失败 |
 | `[错误]` | 输入错误/异常 | 非法输入、运行异常 |
 | `[结果]` | 汇总 | 脚本结束前的汇总 |
-| `[输入]` | 请求输入 | 直接要求用户键入或选择的提示行（含 `Read-Host` / `read -p` 所在行及菜单引导行） |
+| `[输入]` | 请求输入 | 直接要求用户键入或选择的提示行（含 `Read-Host` / `read -p` / `input()` 所在行及菜单引导行） |
 | `[结束]` | 结束提示 | "按回车键退出…"等仅用于结束脚本运行的收尾提示 |
 
 - 凡需要用户输入或选择的场景，提示行必须以 `[输入]` 开头，禁止使用裸文本或 `[提示]`。
 - "按回车键退出…"等收尾提示一律使用 `[结束]`。
-- 纯 ASCII 约束下（如 `PSRunner.cmd`）使用英文等价标签：`[输入]` → `[Input]`，`[结束]` → `[End]`，语义与中文标签一致。
+- 纯 ASCII 约束下（如 `PSRunner.cmd` / `PYRunner.cmd`）使用英文等价标签：`[输入]` → `[Input]`，`[结束]` → `[End]`，语义与中文标签一致。
 
 ## 输入约定
 
@@ -104,6 +105,20 @@
   input=$(printf '%s' "$input" | sed 's/\\ / /g')
   ```
 
+**Python (.py)**
+- Terminal 拖入路径时空格被转义为 `\ `，iTerm2 可能带引号，与 macOS 规整逻辑一致。
+- 规整逻辑（先去除首尾引号，再还原空格转义 `\ `）：
+  ```python
+  def clean_path(s):
+      s = (s or "").strip()
+      while s and s[0] in "\"'":
+          s = s[1:]
+      while s and s[-1] in "\"'":
+          s = s[:-1]
+      s = s.replace("\\ ", " ")
+      return s.strip()
+  ```
+
 ## 进度与结果输出
 
 ### 步骤进度
@@ -123,14 +138,15 @@
 
 ## 破坏性操作
 
-- 删除文件、修改系统设置、重启进程等操作前必须二次确认。
-- 明确提示操作影响范围（例如"执行后访达窗口将全部关闭"）。
+- 删除文件、覆盖既有文件、修改系统设置、重启进程等操作前必须二次确认。
+- 明确提示操作影响范围（例如"执行后访达窗口将全部关闭""目标目录下同名文件将被覆盖"）。
 - 提供 `q` 取消机会。
 
 ## 权限检查
 
 - Windows：需要管理员权限时，先检查并提示，权限不足则警告或退出。
 - macOS：需要写系统目录时，检查权限并提示。
+- Python：脚本无系统级提权机制。需要写入系统目录时，检查并提示用户权限，权限不足则警告或退出，并建议用户自行以合适方式处理。
 
 ## 编码与文件规范
 
@@ -138,38 +154,70 @@
 | -------- | ---- | ---- | ---- |
 | `.ps1` | UTF-8 无 BOM | LF | Windows 工具，经 `PSRunner.cmd` 运行（见下文"Windows 启动与运行"） |
 | `.command` | UTF-8 无 BOM | LF | 首行 `#!/bin/bash`，需 `chmod +x` |
+| `.sh` | UTF-8 无 BOM | LF | 首行 `#!/bin/bash`，需 `chmod +x` |
+| `.py` | UTF-8 无 BOM | LF | 首行 `#!/usr/bin/env python3`；Python 3 源文件默认 UTF-8 |
+| `requirements.txt` | UTF-8 无 BOM | LF | 每行一个依赖，建议使用下限版本（`>=`） |
 | `PSRunner.cmd` | 纯 ASCII | CRLF | Windows 通用启动器，内容不得出现非 ASCII 字符 |
+| `PYRunner.cmd` | 纯 ASCII | CRLF | Windows Python 通用启动器，内容不得出现非 ASCII 字符 |
 
-- `.command` 禁止添加 BOM，否则会破坏 `#!/bin/bash` 首行导致脚本无法运行。
+- `.command` / `.sh` 禁止添加 BOM，否则会破坏 `#!/bin/bash` 首行导致脚本无法运行。
 - Windows `.ps1` 一律使用 UTF-8 无 BOM。脚本作者无需关心 BOM 与 PowerShell 版本：启动器会按版本探测结果瞬时处理（Windows PowerShell 5.1 及更早临时加 BOM），运行结束后统一还原为无 BOM，详见下文。
 - 通用启动器（唯一的 `.cmd` 文件）内容必须保持纯 ASCII，并使用 CRLF 换行，避免中文乱码与 `goto`/标签异常。
 - 纯 ASCII 文件中的交互标签使用英文等价：路径输入提示用 `[Input]`，`Press any key to exit...` 前缀 `[End]`，语义与中文 `[输入]`/`[结束]` 对应。
+- `.py` 脚本内建议显式设置标准输入输出编码为 UTF-8，保证中文输出正确：
+  ```python
+  for stream in (sys.stdout, sys.stdin):
+      try:
+          stream.reconfigure(encoding="utf-8")
+      except Exception:
+          pass
+  ```
 - 提交/保存时确保编码一致，避免中文乱码。
 
-### 为什么 Windows 不使用 cmd，而改用 PowerShell + 通用启动器
+## Python 环境与运行约定
 
-cmd.exe 在 `chcp 65001`（UTF-8 代码页）下解析批处理源码时存在已知缺陷：它按内部字节偏移逐行定位，而 UTF-8 是多字节编码，对中文字符的字节定位会漂移，导致个别行**从错误的字节位置开始读取**。由于 UTF-8 具有自同步性，错位只出现在**行首**（表现为 `'�xx' is not recognized` 式乱码），行内其余文本仍正常。
+1. **独立虚拟环境**：`cli/python` 目录下脚本统一运行在独立 venv（`cli/python/.venv`）中，不污染全局环境。使用者首次使用前需在 `cli/python` 目录下安装依赖：
 
-通过添加 BOM（`EF BB BF`）规避该缺陷也被实测证伪：BOM 会破坏批处理第 1 行（如 `@echo off` 无法执行，回显保持开启），且行首乱码依旧且每次出现的行不固定。因此 Windows 侧不再使用内联中文的 `.cmd`，而是迁移到 PowerShell：
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/pip install -r requirements.txt
+   ```
 
-- **`.ps1` 读取差异**：PowerShell 7（`pwsh`）原生按 UTF-8 读取 `.ps1`；Windows PowerShell 5.1 对无 BOM 文件按系统 ANSI 代码页读取（中文 Windows 为 GBK/936），会乱码。
-- **特性兜底**：为在"无法预知用户环境"（可能只有自带 5.1）的前提下仍保证 UTF-8 无 BOM 正确显示，统一经 `PSRunner.cmd` 运行。启动器探测 PowerShell 主版本：Windows PowerShell（5.1 及更早，主版本 `< 6`）时临时为目标 `.ps1` 添加 UTF-8 BOM（`EF BB BF`）供 `-File` 直跑正确解码中文，`pwsh`（6+）则无需处理；运行结束无论初始状态如何，统一移除 BOM，保证 `.ps1` 永不带 BOM 入库。
+2. **依赖清单**：依赖统一维护在 `cli/python/requirements.txt`，多个工具可共用同一份清单。
+3. **运行方式**：统一通过 `.venv/bin/python <工具名>.py` 运行，禁止依赖全局环境。
 
-### Windows 启动与运行
+### Python Windows 启动与运行
 
-- `.ps1` 默认双击是"编辑打开"而非运行，且受执行策略限制。统一通过启动器运行，三种方式均可：
-  - **方式一（拖拽）**：把 `.ps1` 文件拖到 `PSRunner.cmd` 上直接执行。
-  - **方式二（双击启动与选单）**：双击启动 `PSRunner.cmd`，自动扫描并列出同目录下所有 `.ps1` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.ps1` 路径，或输入 `q`/直接回车退出。
-  - **方式三（命令行传参）**：`PSRunner.cmd "script.ps1" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
+- Windows 侧 `.py` 工具统一经启动器 `cli/python/PYRunner.cmd` 运行，三种方式均可：
+  - **方式一（拖拽）**：把 `.py` 文件拖到 `PYRunner.cmd` 上直接执行。
+  - **方式二（双击启动与选单）**：双击启动 `PYRunner.cmd`，自动探测 Python、按需创建 `.venv` 并安装依赖，随后扫描并列出同目录下所有 `.py` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.py` 路径，或输入 `q`/直接回车退出。
+  - **方式三（命令行传参）**：`PYRunner.cmd "script.py" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
   - 启动器所有执行路径（成功/失败/取消）末尾都有 `pause`，窗口不会一闪而过。
-- **不要**直接右键 `.ps1` → "使用 PowerShell 运行"：该动词调用 `powershell.exe`（5.1），对无 BOM 的 UTF-8 文件按系统 ANSI 代码页读取（中文乱码），且不经过 `-ExecutionPolicy Bypass`（默认 `Restricted` 策略会直接报"禁止运行脚本"并一闪而过）。UTF-8 无 BOM 下唯一可靠路径就是经通用启动器拖拽运行。
-- 启动器自动优先调用 `pwsh`，缺失时回落 `powershell`（5.1），并使用 `-NoProfile -ExecutionPolicy Bypass` 绕过执行策略，`-File` 直跑保证 `$PSScriptRoot` 正确。
-- **决策（2026-08-19）**：已正式采纳"启动器按版本瞬时处理 BOM"方案（见上"特性兜底"），取代旧的"无 BOM / 仅经 .NET 强制读"约定，并删除 `PowerShellRunner.cmd`，合并为唯一启动器 `PSRunner.cmd`。仓库内 `.ps1` 仍一律 UTF-8 无 BOM；启动器运行时瞬时增删 BOM，运行后必还原。其余方案（`.ps1` 常驻 BOM、或改注册表动词指 `pwsh`）维持不采用。
-- 脚本内建议显式设置控制台编码，保证中文输出正确：
-  ```powershell
-  $null = chcp 65001
-  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-  ```
+- **编码约束**：`PYRunner.cmd` 遵循启动器约定，内容**纯 ASCII + CRLF**，交互标签使用英文（`[Input]`/`[End]`），避免中文乱码与 `goto`/标签异常。
+- **运行约定**：启动器自动探测 `python`/`python3`，缺 `.venv\Scripts\python.exe` 时用系统 Python 创建 `.venv`，并执行 `pip install -r requirements.txt`（幂等，既检查又安装）。运行目标时使用 `.venv\Scripts\python.exe -X utf8 -u`，并设置 `chcp 65001` / `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 保证中文输出不乱码。
+- `.py` 源文件读取无 BOM 问题（Python 原生按 UTF-8 读取），无需 `PSRunner.cmd` 那套瞬时增删 BOM 的处理。
+
+### Python macOS 启动与运行
+
+- macOS 侧 `.py` 工具统一经启动器 `cli/python/PYRunner.command` 运行，三种方式均可：
+  - **方式一（拖拽）**：把 `.py` 文件拖到 `PYRunner.command` 上直接执行。
+  - **方式二（双击启动与选单）**：双击启动 `PYRunner.command`，自动探测 Python、按需创建 `.venv` 并安装依赖，随后扫描并列出同目录下所有 `.py` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.py` 路径，或输入 `q`/直接回车退出。
+  - **方式三（命令行传参）**：`PYRunner.command "script.py" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
+  - 启动器所有执行路径（成功/失败/取消）末尾都等待回车确认，窗口不会一闪而过。
+- **文件规范**：`PYRunner.command` 遵循 `.command` 规范，UTF-8 无 BOM、LF、首行 `#!/bin/bash`、需 `chmod +x`。
+- **运行约定**：启动器自动探测 `python3`/`python`，缺 `.venv/bin/python` 时用系统 Python 创建 `.venv`，并执行 `pip install -r requirements.txt`（幂等，既检查又安装）。运行目标时使用 `.venv/bin/python -u`，并设置 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 兜底保证中文输出不乱码。
+- **交互语言**：macOS 终端无 Windows 乱码问题，`PYRunner.command` 使用中文交互并遵循统一前缀规范（`[输入]`/`[结束]` 等），与其它 macOS `.command` 工具一致。
+
+### Python Linux 启动与运行
+
+- Linux 侧 `.py` 工具统一经启动器 `cli/python/PYRunner.sh` 运行，三种方式均可：
+  - **方式一（参数传入）**：`./PYRunner.sh /path/to/script.py` 直接执行。
+  - **方式二（直接运行选单）**：在 `cli/python` 目录执行 `./PYRunner.sh`，自动探测 Python、按需创建 `.venv` 并安装依赖，随后扫描并列出同目录下所有 `.py` 脚本，输入对应数字编号即可快速执行；亦支持直接输入/拖入其它 `.py` 路径，或输入 `q`/直接回车退出。
+  - **方式三（命令行传参）**：`PYRunner.sh "script.py" [参数...]`，额外参数会原样透传给目标脚本（参数含空格时需自行加引号）。
+  - 启动器所有执行路径（成功/失败/取消）末尾都等待回车确认，窗口不会一闪而过。
+- **文件规范**：`PYRunner.sh` 遵循 `.sh` 规范，UTF-8 无 BOM、LF、首行 `#!/bin/bash`、需 `chmod +x`。
+- **运行约定**：启动器自动探测 `python3`/`python`，缺 `.venv/bin/python` 时用系统 Python 创建 `.venv`，并执行 `pip install -r requirements.txt`（幂等，既检查又安装）。运行目标时使用 `.venv/bin/python -u`，并设置 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 兜底保证中文输出不乱码。
+- **交互语言**：Linux 终端无 Windows 乱码问题，`PYRunner.sh` 使用中文交互并遵循统一前缀规范（`[输入]`/`[结束]` 等），与其它 Linux `.sh` 工具一致。
 
 ## 结束确认
 
@@ -180,3 +228,7 @@ cmd.exe 在 `chcp 65001`（UTF-8 代码页）下解析批处理源码时存在�
   ```bash
   read -p "[结束] 按回车键退出..."
   ```
+- Python：
+  - **交互模式**（`sys.stdin.isatty()` 为真）：脚本所有输出完成后，以 `input("[结束] 按回车键退出...")` 收尾，再结束。
+  - **非交互模式**（stdin 非 TTY，如参数全由命令行指定、输出重定向到管道）：不等待输入，直接结束，避免阻塞管道。
+  - 取消（`q`）与错误退出同样遵循以上交互/非交互规则。

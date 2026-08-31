@@ -7,9 +7,8 @@
 | 目录 | 内容 |
 | ---- | ---- |
 | `pack/` | 针对具体场景的工具集合（含安装脚本、配置工具等） |
-| `cli/` | 命令行工具，按系统归档分类 |
+| `cli/` | 命令行工具，按系统归档分类（含 Python 工具） |
 | `web/` | 纯前端工具，无需构建、无需后端 |
-| `python/` | Python 命令行工具，独立 venv 运行 |
 | `doc/` | 文档（含交互规范） |
 
 ---
@@ -21,6 +20,7 @@
 - `cli/macos/`：macOS 工具（`.command`，需 `chmod +x`）
 - `cli/linux/`：Linux 工具（`.sh`，需 `chmod +x`）
 - `cli/windows/`：Windows 工具（`.ps1`，经 `PSRunner.cmd` 启动）
+- `cli/python/`：跨平台 Python 工具（`.py`，独立 venv 运行）
 
 > Windows 侧工具统一经 `PSRunner.cmd` 拖拽或输入路径运行，详见交互规范。
 
@@ -32,22 +32,22 @@
 
 ---
 
-## Python 工具（`python/`）
+## Python 工具（`cli/python/`）
 
-Python 命令行工具，统一在 `python/.venv` 独立虚拟环境中运行，依赖见 `python/requirements.txt`，运行前先安装依赖：
+Python 命令行工具，统一在 `cli/python/.venv` 独立虚拟环境中运行，依赖见 `cli/python/requirements.txt`，运行前先安装依赖：
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-Windows 侧工具统一经 `python/PYRunner.cmd` 拖拽或输入路径运行（详见交互规范）：启动器自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本。
+Windows 侧工具统一经 `cli/python/PYRunner.cmd` 拖拽或输入路径运行（详见交互规范）：启动器自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本。
 
-macOS 侧工具统一经 `python/PYRunner.command` 拖拽或输入路径运行：功能与 Windows 侧一致，自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本（需 `chmod +x`）。
+macOS 侧工具统一经 `cli/python/PYRunner.command` 拖拽或输入路径运行：功能与 Windows 侧一致，自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本（需 `chmod +x`）。
 
-Linux 侧工具统一经 `python/PYRunner.sh` 输入路径运行：功能与 Windows/macOS 侧一致，自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本（需 `chmod +x`）。
+Linux 侧工具统一经 `cli/python/PYRunner.sh` 输入路径运行：功能与 Windows/macOS 侧一致，自动探测 Python、创建 `.venv`、按 `requirements.txt` 安装依赖后运行脚本（需 `chmod +x`）。
 
-每个工具的直接说明文档为与工具同名的 `.md` 文件（如 `python/llm-dir-translate.md`）。
+每个工具的直接说明文档为与工具同名的 `.md` 文件（如 `cli/python/llm-dir-translate.md`）。
 
 ---
 
@@ -61,8 +61,7 @@ Linux 侧工具统一经 `python/PYRunner.sh` 输入路径运行：功能与 Win
 
 按工具类型归档交互规范与通用样式资源：
 
-- `doc/cli/standard.md`：命令行工具统一交互规范（启动横幅、统一信息前缀、参数收集、BOM 处理等）
-- `doc/python/standard.md`：Python 工具统一交互规范（虚拟环境、交互/非交互模式、路径规整等）
+- `doc/cli/standard.md`：命令行工具统一交互规范（启动横幅、统一信息前缀、参数收集、BOM 处理、Python 环境与运行约定等）
 - `doc/web/standard.md`：Web 工具统一交互规范（页面布局、Toast 反馈、多语言、CDN 引用等）
 - `doc/web/common.css`：Web 工具通用样式源文件（各 Web 工具在 `style/common.css` 放置副本）
 
