@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """device-protocol-scan.py：设备协议检测工具（跨平台）。
 
-自动识别本机所在网段，扫描存活主机，按用户选择的 1 种内置协议检测目标端口，
+自动识别本机网卡，扫描存活主机，按用户选择的 1 种内置协议检测目标端口，
 并通过协议握手 / banner 复核确认服务类型，最终输出每台设备的 IP、MAC 与服务信息。
 每次运行仅检测 1 种协议。为 cli/windows/device-protocol-scan.ps1 的 Python 移植版。
 
@@ -81,8 +81,111 @@ def get_subnet_hosts(ip, prefix):
     return [str(h) for h in net.hosts()]
 
 
+def list_active_ipv4():
+    """返回全部可用候选网卡，每项为 dict {iface, ip, prefix, state}。
+
+    仅保留已连接/up、非 loopback、非 linklocal 的 IPv4；按平台枚举所有接口。
+    """
+    system = platform.system()
+    found = []
+
+    def add(iface, ip, prefix, state):
+        if iface is None or ip is None or prefix is None:
+            return
+        if iface == "lo" or is_linklocal(ip):
+            return
+        found.append({"iface": str(iface), "ip": ip,
+                      "prefix": int(prefix), "state": bool(state)})
+
+    if system == "Darwin":
+        relist = run_cli(["ifconfig", "-l"]).split()
+        for ifname in relist:
+            if ifname == "lo0":
+                continue
+            ifo = run_cli(["ifconfig", ifname])
+            up = re.search(r"^%s:\s+flags=[0-9]+<([^>]*)>" % re.escape(ifname), ifo, re.M)
+            if not up or "UP" not in up.group(1):
+                continue
+            ip = run_cli(["ipconfig", "getifaddr", ifname]).strip()
+            if not ip or is_linklocal(ip):
+                continue
+            prefix = 24
+            nm = re.search(r"inet\s+\S+\s+netmask\s+(0x[0-9a-fA-F]+)", ifo)
+            if nm:
+                prefix = netmask_prefix(nm.group(1))
+            add(ifname, ip, prefix, True)
+
+    elif system == "Linux":
+        out = run_cli(["ip", "-4", "-o", "addr", "show"])
+        for m in re.finditer(
+            r"^\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)",
+            out, re.M
+        ):
+            ifname = m.group(1)
+            if ifname == "lo":
+                continue
+            state = "UP" in run_cli(["ip", "link", "show", ifname])
+            add(ifname, m.group(2), m.group(3), state)
+
+    elif system == "Windows":
+        try:
+            import netifaces  # pragma: no cover - 若存在则优先使用
+        except Exception:
+            netifaces = None
+        if netifaces is not None:  # pragma: no cover
+            for iface in netifaces.interfaces():
+                addrs = netifaces.ifaddresses(iface)
+                addrs4 = addrs.get(netifaces.AF_INET, [])
+                for a in addrs4:
+                    ip = a.get("addr", "")
+                    if ip and not is_linklocal(ip):
+                        add(iface, ip, netmask_prefix(a.get("netmask", "255.255.255.0")), True)
+        else:
+            out = run_cli(["ipconfig", "/all"])
+            blocks = re.split(r"\n(?=\S)", out)
+            for blk in blocks:
+                name_m = re.search(r"^(?:以太网|Ethernet|无线局域网|Wireless|本地连接|Ethernet adapter|Wireless LAN adapter)[^\r\n]*", blk, re.M)
+                if not name_m:
+                    name_m = re.search(r"\b(?:adapter|适配器)[^\r\n]*\S+", blk, re.I)
+                iface = name_m.group(0).strip() if name_m else "?"
+                ip_m = re.search(r"IPv4[^\r\n]*?(\d{1,3}(?:\.\d{1,3}){3})", blk)
+                if not ip_m:
+                    continue
+                ip = ip_m.group(1)
+                if is_linklocal(ip):
+                    continue
+                prefix = 24
+                sm = re.search(r"[^\r\n]*?(?:子网掩码|Subnet Mask|サブネット マスク)[^\r\n]*?(\d{1,3}(?:\.\d{1,3}){3})", blk)
+                if sm:
+                    prefix = netmask_prefix(sm.group(1))
+                state = (re.search(r"(?i)媒体断开|Media disconnected|メディア", blk) is None)
+                add(iface, ip, prefix, state)
+
+    if found:
+        return found
+
+    # 通用回退：ifconfig 解析
+    out = run_cli(["ifconfig"])
+    for m in re.finditer(
+        r"^(\S+):\s+flags=[0-9]+<([^>]*)>.*?\n(?:.*\n)*?\s+inet\s+(\d+\.\d+\.\d+\.\d+)\s+netmask\s+(0x[0-9a-fA-F]+|\d+\.\d+\.\d+\.\d+)",
+        out, re.M | re.S,
+    ):
+        ifname = m.group(1)
+        if "UP" not in m.group(2):
+            continue
+        ip = m.group(3)
+        if is_linklocal(ip):
+            continue
+        add(ifname, ip, netmask_prefix(m.group(4)), True)
+
+    return found
+
+
 def get_active_ipv4():
-    """返回 (ip, prefix)，无法识别返回 (None, 0)。"""
+    """返回 (ip, prefix)（取首个候选），无法识别返回 (None, 0)。"""
+    lst = list_active_ipv4()
+    if lst:
+        return lst[0]["ip"], lst[0]["prefix"]
     system = platform.system()
 
     if system == "Darwin":
@@ -729,6 +832,43 @@ def show_protocol_menu(registry):
         print("")
 
 
+def state_label(state):
+    return "已连接" if state else "未连接"
+
+
+def resolve_interface(iface_arg, candidates):
+    """按接口名或 IP 匹配候选网卡，返回匹配项，找不到返回 None。"""
+    if not iface_arg:
+        return None
+    key = iface_arg.strip()
+    for c in candidates:
+        if c["iface"] == key or c["ip"] == key:
+            return c
+    return None
+
+
+def show_nic_menu(candidates):
+    if not candidates:
+        return None
+    while True:
+        print("[输入] 请选择要检测的网卡 [1 - {} / q 取消]:".format(len(candidates)), flush=True)
+        for i, c in enumerate(candidates):
+            print("  {}. {}  {}/{}  [{}]".format(
+                i + 1, c["iface"], c["ip"], c["prefix"], state_label(c["state"])))
+        print("")
+        choice = input("[输入] 请输入选项数字 [1 - {} / q 取消] 然后按回车: ".format(len(candidates))).strip()
+        if re.match(r"^[qQ]$", choice):
+            return None
+        try:
+            n = int(choice)
+        except ValueError:
+            n = 0
+        if n >= 1 and n <= len(candidates):
+            return candidates[n - 1]
+        print("[错误] 无效输入，请输入 1 - {} 或 q。".format(len(candidates)))
+        print("")
+
+
 def confirm_or_exit(cancel_msg):
     if interactive:
         print(cancel_msg)
@@ -743,6 +883,8 @@ def main():
     parser = argparse.ArgumentParser(description="设备协议检测工具")
     parser.add_argument("-Subnet", "-subnet", "--subnet", dest="subnet", default=None,
                         help="手动指定 CIDR 网段，例如 192.168.1.0/24")
+    parser.add_argument("-Interface", "-interface", "--interface", dest="interface", default=None,
+                        help="指定要检测的网卡（接口名或 IP），例如 eth0")
     parser.add_argument("-Protocol", "-protocol", "--protocol", dest="protocol", default=None,
                         help="要检测的协议名（每次 1 种），例如 SSH")
     parser.add_argument("-Ports", "-ports", "--ports", dest="ports", default="",
@@ -772,16 +914,16 @@ def main():
 
     print("=========================================")
     print("  设备协议检测工具")
-    print("  版本 1.0")
+    print("  版本 1.1")
     print("=========================================")
     print("[适用场景]")
     print("需要识别局域网内设备开放的端口与协议服务（HTTP、SSH、FTP、RTSP、RDP 等）时使用。")
     print("")
     print("[功能说明]")
-    print("自动识别本机所在网段，扫描存活主机，并按所选协议做端口检测与握手复核，输出每台设备的 IP、MAC 与服务信息。")
+    print("自动识别本机网卡（多网卡时可选择需要检测的网卡），扫描存活主机，并按所选协议做端口检测与握手复核，输出每台设备的 IP、MAC 与服务信息。")
     print("")
     print("[操作方式]")
-    print("输入选项数字选择 1 种协议后按回车，输入 q 取消；随后确认扫描参数后自动执行。")
+    print("输入选项数字选择 1 种协议后按回车，输入 q 取消；多网卡时需再选择检测网卡；随后确认扫描参数后自动执行。")
     print("")
     print("[执行步骤]")
     print("1. 识别网段与待扫描主机")
@@ -791,6 +933,7 @@ def main():
     print("")
     print("[注意事项]")
     print("- 每次运行仅检测 1 种协议；可用 -Ports 附加原始端口（仅做 TCP 开放检测）。")
+    print("- 多网卡环境可用 -Interface <接口名或IP> 指定网卡，或用 -Subnet 直接指定网段。")
     print("- 扫描整个网段耗时较长，请耐心等待。")
     print("- 需在可访问目标网段的网络环境下运行。")
     print("- 无 Python 环境时请使用 cli/windows/device-protocol-scan.ps1。")
@@ -815,7 +958,7 @@ def main():
             input("[结束] 按回车键退出...")
             sys.exit(0)
 
-    # ---- 收集参数：网段 ----
+    # ---- 收集参数：网段 / 网卡 ----
     if args.subnet:
         m = re.match(r"^(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})$", args.subnet)
         if not m:
@@ -824,12 +967,35 @@ def main():
             sys.exit(confirm_or_exit("[提示] 已取消，未开始扫描。"))
         local_ip = m.group(1)
         prefix = int(m.group(2))
+        nic_state = None
     else:
-        local_ip, prefix = get_active_ipv4()
-        if not local_ip:
+        candidates = list_active_ipv4()
+        if not candidates:
             print("")
             print("[错误] 无法自动识别网段，请使用 -Subnet 手动指定，例如 -Subnet 192.168.1.0/24。")
             sys.exit(confirm_or_exit("[提示] 已取消，未开始扫描。"))
+        chosen = None
+        if args.interface:
+            chosen = resolve_interface(args.interface, candidates)
+            if not chosen:
+                print("")
+                print("[错误] 未找到匹配的网卡: {}（接口名或 IP）。".format(args.interface))
+                print("[提示] 可用网卡：{}。".format(
+                    ", ".join("{} ({})".format(c["iface"], c["ip"]) for c in candidates)))
+                sys.exit(confirm_or_exit("[提示] 已取消，未开始扫描。"))
+        elif interactive:
+            print("")
+            chosen = show_nic_menu(candidates)
+            if not chosen:
+                print("[提示] 已取消，未开始扫描。")
+                print("")
+                input("[结束] 按回车键退出...")
+                sys.exit(0)
+        else:
+            chosen = candidates[0]
+        local_ip = chosen["ip"]
+        prefix = chosen["prefix"]
+        nic_state = state_label(chosen["state"])
 
     scan_ports = sorted(set([int(p) for p in selected_protocol["Ports"]] + extra_ports))
 
@@ -837,6 +1003,8 @@ def main():
     print("")
     print("[提示] 扫描参数确认：")
     print("  检测协议: {}（端口: {}）".format(selected_protocol["Name"], ",".join(str(p) for p in selected_protocol["Ports"])))
+    if nic_state is not None:
+        print("  检测网卡: {}  [{}]".format(chosen["iface"], nic_state))
     print("  扫描网段: {}/{}".format(local_ip, prefix))
     print("  检测端口: {}".format(",".join(str(p) for p in scan_ports)))
     if extra_ports:

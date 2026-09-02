@@ -1,15 +1,15 @@
 # 设备协议检测工具（Python）
 
-> 当前版本：`1.0`
+> 当前版本：`1.1`
 
-自动识别本机所在网段，扫描存活主机，按用户选择的 1 种内置协议检测目标端口，并通过协议握手 / banner 复核确认服务类型，最终输出每台设备的 IP、MAC 与服务信息。每次运行仅检测 1 种协议。
+自动识别本机网卡，扫描存活主机，按用户选择的 1 种内置协议检测目标端口，并通过协议握手 / banner 复核确认服务类型，最终输出每台设备的 IP、MAC 与服务信息。每次运行仅检测 1 种协议。多网卡时可选择要检测的网卡。
 
 本工具为 `cli/windows/device-protocol-scan.ps1` 的跨平台移植版（macOS / Linux），仅使用 Python 标准库实现。无 Python 环境时仍可使用 Windows 版 `cli/windows/device-protocol-scan.ps1`。
 
 ## 功能特性
 
 - **跨平台**：macOS / Linux 自动适配网段识别、Ping 参数、ARP/MAC 查询方式
-- **自动识别网段**：默认自动探测本机所在网段，也可 `-Subnet` 手动指定
+- **多网卡识别**：默认枚举本机全部网卡（含连接状态），多网卡时可交互选择要检测的网卡；也可 `-Interface` 锁定或 `-Subnet` 手动指定
 - **并行扫描**：Ping 存活与 TCP 端口检测按批次（128）并发执行
 - **协议握手复核**：12 种内置协议通过握手 / banner 判定，降低误报
 - **额外原始端口**：`-Ports` 附加端口仅做 TCP 开放检测（TCP-only）
@@ -38,11 +38,11 @@ python3 -m venv .venv
 .venv/bin/python device-protocol-scan.py
 ```
 
-启动后先展示工具说明横幅，再按提示选择要检测的 1 种协议（输入数字后按回车，`q` 取消），随后回显扫描参数确认（`y` 开始 / `q` 取消）后自动执行。
+启动后先展示工具说明横幅，再按提示选择要检测的 1 种协议（输入数字后按回车，`q` 取消），多网卡时再选择要检测的网卡，随后回显扫描参数确认（`y` 开始 / `q` 取消）后自动执行。
 
 执行流程：
 
-1. 识别网段与待扫描主机
+1. 识别网卡与待扫描主机
 2. Ping 扫描存活主机
 3. 检测开放端口
 4. 协议握手复核
@@ -53,17 +53,20 @@ python3 -m venv .venv
 
 ```bash
 .venv/bin/python device-protocol-scan.py -Protocol SSH -Subnet 192.168.1.0/24
+.venv/bin/python device-protocol-scan.py -Protocol SSH -Interface en0
 ```
 
 | 参数 | 说明 |
 | --- | --- |
-| `-Subnet` / `--subnet` | 手动指定 CIDR 网段，例如 `192.168.1.0/24`；缺省自动识别本机网段 |
+| `-Subnet` / `--subnet` | 手动指定 CIDR 网段，例如 `192.168.1.0/24`；优先于网卡选择 |
+| `-Interface` / `--interface` | 指定要检测的网卡（接口名或 IP），例如 `en0`、`eth0`；多网卡时跳过网卡菜单 |
 | `-Protocol` / `--protocol` | 要检测的协议名（每次 1 种），例如 `SSH`；缺省进入交互菜单选择 |
 | `-Ports` / `--ports` | 额外要检测的原始端口（TCP-only），例如 `8080,8443` |
 | `-TimeoutMs` / `--timeout` | TCP 连接 / 读取超时（毫秒），默认 `1500` |
 | `-PingTimeoutMs` / `--pingtimeout` | Ping 超时（毫秒），默认 `500` |
 | `-OutFile` / `--outfile` | 将全部结果导出为 CSV 文件（可选） |
 
+> 网卡选择优先级：`-Subnet`（显式网段）＞ `-Interface`（锁定网卡）＞ 交互菜单 ＞ 非交互取首个候选。
 > 全部参数由命令行指定且标准输入非 TTY 时以非交互模式运行：不再回显确认、结束后不等待回车；若协议缺失且标准输入非 TTY，则报错退出，不会挂起等待输入。
 
 ## 内置协议
@@ -86,9 +89,17 @@ python3 -m venv .venv
 ## 说明与限制
 
 - 每次运行仅检测 1 种协议；可用 `-Ports` 附加原始端口（仅做 TCP 开放检测）
+- 多网卡环境默认仅检测所选网卡的子网；可用 `-Interface` 锁定网卡或用 `-Subnet` 直接指定网段
 - HTTPS 判定不校验证书（与 Windows 版行为一致），可识别自签名证书设备
 - 扫描整个网段耗时较长，请耐心等待
 - MAC 查询依赖系统 ARP 表（`arp -n` / `ip neigh` / `/proc/net/arp`），未命中时记 `N/A`
 - 依赖主机应答 ICMP for Ping 存活扫描；主机防火墙屏蔽 Ping 时可能漏检
 - 本工具为 Windows 版 `cli/windows/device-protocol-scan.ps1` 的跨平台移植，二者功能与输出格式保持一致
 - 无 Python 环境的使用者请使用 `cli/windows/device-protocol-scan.ps1`（配合 `PSRunner.cmd` 运行）
+
+## 版本历史
+
+| 版本 | 变更说明 |
+| --- | --- |
+| 1.1 | 新增多网卡支持：枚举本机全部网卡（含连接状态），交互时可选择要检测的网卡；新增 `-Interface`（接口名或 IP）参数；`-Subnet` 优先于网卡选择；非交互未指定网卡时自动取首个候选 |
+| 1.0 | 初始版本：与 `device-protocol-scan.ps1` 功能等价的跨平台移植；12 种协议握手复核、128 并发批处理、CSV 导出、交互/非交互自动切换 |

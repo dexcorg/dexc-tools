@@ -9,7 +9,7 @@ SEP="=================================================="
 show_banner() {
     echo "$SEP"
     echo "            网卡网络配置工具"
-    echo "            版本 1.0"
+    echo "            版本 1.1"
     echo "$SEP"
     echo "[适用场景]"
     echo "需要为指定网卡设置静态 IP 地址、子网掩码和默认网关，或查看网卡当前配置时使用。"
@@ -19,7 +19,7 @@ show_banner() {
     echo "  1. 列出本机所有网卡及其连接状态"
     echo "  2. 显示所选网卡的当前 IP、子网掩码、默认网关与 MAC 地址"
     echo "  3. 收集新的 IP、子网掩码、默认网关（网关可留空）"
-    echo "  4. 确认后应用静态 IP 配置"
+    echo "  4. 确认后应用静态 IP 配置，并自动持久化"
     echo ""
     echo "[操作方式]"
     echo "按提示输入网卡编号选择要操作的网卡，再依次输入新 IP、子网掩码、默认网关，"
@@ -29,12 +29,15 @@ show_banner() {
     echo "1. 选择要配置的网卡"
     echo "2. 查看当前配置"
     echo "3. 输入新的 IP、子网掩码、默认网关"
-    echo "4. 确认并应用配置"
+    echo "4. 确认并应用配置（含持久化写入）"
     echo ""
     echo "[注意事项]"
     echo "- 修改网卡 IP 可能导致本机网络短暂中断，请在确认前保存未完成的工作。"
     echo "- 需要 root 权限或 sudo，修改时系统将请求管理员权限。"
     echo "- 网关留空则仅设置本机 IP 与子网掩码，不配置默认路由。"
+    echo "- 若网卡由 NetworkManager 管理，配置通过 nmcli 写入 NM 配置文件（持久化）。"
+    echo "- 若网卡不由 NetworkManager 管理，脚本将自动检测 Netplan 或 ifupdown 并写入"
+    echo "  对应配置文件（持久化）；若系统均不支持，将给出手动配置指引。"
     echo "$SEP"
 }
 
@@ -253,7 +256,142 @@ get_net_config() {
     CONFIG_MAC="${cur_mac:-未获取}"
 }
 
+# ---------- 检测持久化后端 ----------
+# 输出全局变量 PERSIST_BACKEND = "netplan" | "ifupdown" | "none"
+detect_persist_backend() {
+    PERSIST_BACKEND="none"
+    if [ -d /etc/netplan ] && ls /etc/netplan/*.yaml >/dev/null 2>&1; then
+        PERSIST_BACKEND="netplan"
+    elif [ -f /etc/network/interfaces ]; then
+        PERSIST_BACKEND="ifupdown"
+    fi
+}
+
+# ---------- Netplan 持久化写入 ----------
+# 参数: dev ip prefix gw
+# 输出全局变量 PERSIST_RESULT_MSG（操作结果说明）
+persist_netplan() {
+    local dev="$1"
+    local ip="$2"
+    local prefix="$3"
+    local gw="$4"
+
+    local target="/etc/netplan/99-static-${dev}.yaml"
+
+    # 构造 YAML 内容
+    local yaml_content
+    yaml_content="network:
+  version: 2
+  ethernets:
+    ${dev}:
+      dhcp4: false
+      addresses:
+        - ${ip}/${prefix}"
+
+    if [ -n "$gw" ]; then
+        yaml_content="${yaml_content}
+      routes:
+        - to: default
+          via: ${gw}"
+    fi
+
+    yaml_content="${yaml_content}
+      nameservers:
+        addresses: []
+"
+
+    # 写入文件
+    if echo "$yaml_content" | $SUDO tee "$target" >/dev/null 2>&1; then
+        # 设置权限（Netplan 要求配置文件权限不超过 600）
+        $SUDO chmod 600 "$target" 2>/dev/null
+        # 应用配置
+        if $SUDO netplan apply >/dev/null 2>&1; then
+            PERSIST_RESULT_MSG="[提示] 持久化配置已写入 ${target} 并通过 netplan apply 生效（重启后依然有效）"
+        else
+            PERSIST_RESULT_MSG="[提示] 持久化配置已写入 ${target}，但 netplan apply 执行失败，请手动运行: sudo netplan apply"
+        fi
+    else
+        PERSIST_RESULT_MSG="[警告] 持久化失败。无法写入 ${target}，请检查权限或手动配置 Netplan"
+    fi
+}
+
+# ---------- ifupdown 持久化写入 ----------
+# 参数: dev ip mask gw
+# 输出全局变量 PERSIST_RESULT_MSG（操作结果说明）
+persist_ifupdown() {
+    local dev="$1"
+    local ip="$2"
+    local mask="$3"
+    local gw="$4"
+
+    local ifaces_file="/etc/network/interfaces"
+    local timestamp
+    timestamp=$(date +%Y%m%dT%H%M%S)
+    local backup_file="${ifaces_file}.bak.${timestamp}"
+
+    # 先备份原文件
+    if ! $SUDO cp "$ifaces_file" "$backup_file" 2>/dev/null; then
+        PERSIST_RESULT_MSG="[警告] 持久化失败。无法备份 ${ifaces_file}，操作中止，请检查权限"
+        return 1
+    fi
+
+    # 读取当前文件，剔除已有的 iface <dev> inet stanza
+    # stanza 从 "iface <dev> inet" 行开始，到下一个空行或下一个 "iface/auto/allow" 关键词之前结束
+    local tmp_file
+    tmp_file=$(mktemp)
+    local skip=0
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^iface[[:space:]]+"$dev"[[:space:]]+inet ]]; then
+            skip=1
+            continue
+        fi
+        if [ $skip -eq 1 ]; then
+            # 遇到新 stanza 开始或空行则停止跳过
+            if [[ "$line" =~ ^(iface|auto|allow|mapping|source)[[:space:]] ]] || [[ -z "$line" ]]; then
+                skip=0
+                echo "$line" >> "$tmp_file"
+            fi
+            # 否则跳过 stanza 内的行
+            continue
+        fi
+        echo "$line" >> "$tmp_file"
+    done < "$backup_file"
+
+    # 追加新 stanza
+    {
+        echo ""
+        echo "auto ${dev}"
+        echo "iface ${dev} inet static"
+        echo "    address ${ip}"
+        echo "    netmask ${mask}"
+        if [ -n "$gw" ]; then
+            echo "    gateway ${gw}"
+        fi
+    } >> "$tmp_file"
+
+    # 写回
+    if $SUDO cp "$tmp_file" "$ifaces_file" 2>/dev/null; then
+        rm -f "$tmp_file"
+        # 尝试重启网卡使配置立即生效
+        local restart_msg=""
+        if command -v ifdown >/dev/null 2>&1 && command -v ifup >/dev/null 2>&1; then
+            $SUDO ifdown "$dev" >/dev/null 2>&1
+            if $SUDO ifup "$dev" >/dev/null 2>&1; then
+                restart_msg="，并已通过 ifup 重新激活网卡"
+            else
+                restart_msg="，ifup 重新激活失败，请手动执行: sudo ifup ${dev}"
+            fi
+        fi
+        PERSIST_RESULT_MSG="[提示] 持久化配置已写入 ${ifaces_file}${restart_msg}（备份: ${backup_file}，重启后依然有效）"
+    else
+        rm -f "$tmp_file"
+        PERSIST_RESULT_MSG="[警告] 持久化失败。无法写入 ${ifaces_file}，原文件备份于 ${backup_file}，请手动恢复或配置"
+        return 1
+    fi
+}
+
 # ---------- 应用网络配置 ----------
+# 输出全局变量 PERSIST_RESULT_MSG（持久化操作结果）
 apply_net_config() {
     local dev="$1"
     local ip="$2"
@@ -261,6 +399,8 @@ apply_net_config() {
     local gw="$4"
     local prefix
     prefix=$(mask2cidr "$mask")
+
+    PERSIST_RESULT_MSG=""
 
     local use_nmcli=0
     if command -v nmcli >/dev/null 2>&1; then
@@ -272,6 +412,7 @@ apply_net_config() {
     fi
 
     if [ $use_nmcli -eq 1 ]; then
+        # ── 方式一：NetworkManager 管理（持久化）──────────────────────────
         local con_name
         con_name=$(nmcli -t -f NAME,DEVICE con show --active 2>/dev/null | grep ":${dev}$" | cut -d: -f1 | head -n 1)
         if [ -z "$con_name" ]; then
@@ -288,9 +429,13 @@ apply_net_config() {
             $SUDO nmcli con mod "$con_name" ipv4.addresses "${ip}/${prefix}" ipv4.gateway "" ipv4.method manual >/dev/null 2>&1
         fi
         $SUDO nmcli con up "$con_name" >/dev/null 2>&1
-        return $?
+        local ret=$?
+        PERSIST_RESULT_MSG="[提示] 持久化配置已通过 NetworkManager 写入连接 \"${con_name}\"（重启后依然有效）"
+        return $ret
     else
-        # 标准 iproute2 回落
+        # ── 方式二：iproute2 即时生效 + 自动持久化 ───────────────────────
+
+        # Step 1：即时生效（运行时）
         $SUDO ip -4 addr flush dev "$dev" >/dev/null 2>&1
         $SUDO ip addr add "${ip}/${prefix}" dev "$dev" >/dev/null 2>&1
         local res=$?
@@ -298,6 +443,24 @@ apply_net_config() {
         if [ -n "$gw" ]; then
             $SUDO ip route replace default via "$gw" dev "$dev" >/dev/null 2>&1
         fi
+
+        # Step 2：自动持久化
+        detect_persist_backend
+        case "$PERSIST_BACKEND" in
+            netplan)
+                persist_netplan "$dev" "$ip" "$prefix" "$gw"
+                ;;
+            ifupdown)
+                persist_ifupdown "$dev" "$ip" "$mask" "$gw"
+                ;;
+            none)
+                PERSIST_RESULT_MSG="[警告] 未检测到支持的持久化后端（Netplan / ifupdown），此次配置仅在本次运行期间有效，重启后将失效。
+[建议] 请手动持久化，方法之一：
+  · Netplan:   编辑 /etc/netplan/*.yaml，执行: sudo netplan apply
+  · ifupdown:  编辑 /etc/network/interfaces，执行: sudo ifup ${dev}"
+                ;;
+        esac
+
         return $res
     fi
 }
@@ -520,6 +683,12 @@ if apply_net_config "$sel_dev" "$newIP" "$newMask" "$newGateway"; then
     printf "  默认网关: %s\n" "$CONFIG_GW"
 else
     echo "[失败] 配置应用失败，请检查输入参数是否有效。"
+fi
+
+# 打印持久化结果
+if [ -n "$PERSIST_RESULT_MSG" ]; then
+    echo ""
+    echo "$PERSIST_RESULT_MSG"
 fi
 
 echo ""

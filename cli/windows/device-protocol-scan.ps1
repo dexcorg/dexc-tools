@@ -3,15 +3,18 @@
   设备协议检测工具（Windows / PowerShell 5.1 兼容）
 
 .DESCRIPTION
-  自动识别本机所在网段，扫描存活主机，按用户选择的 1 种内置协议检测目标端口，
+  自动识别本机网卡，扫描存活主机，按用户选择的 1 种内置协议检测目标端口，
   并通过协议握手 / banner 复核确认服务类型，最终输出每台设备的 IP、MAC 与服务信息。
-  每次运行仅检测 1 种协议。
+  每次运行仅检测 1 种协议。多网卡时可选择要检测的网卡。
 
   内置协议：HTTP HTTPS SSH FTP SMTP RTSP Telnet RDP SMB SIP MQTT Redis
   额外原始端口：通过 -Ports 追加，仅做 TCP 端口开放检测（TCP-only）。
 
 .PARAMETER Subnet
-  手动指定 CIDR 网段，例如 192.168.1.0/24。缺省自动识别本机网段。
+  手动指定 CIDR 网段，例如 192.168.1.0/24。缺省自动识别本机网段，多网卡时交互选择。
+
+.PARAMETER Interface
+  指定要检测的网卡（接口名或 IP），例如 eth0。缺省多网卡时交互选择。
 
 .PARAMETER Protocol
   要检测的协议名（每次 1 种），例如 -Protocol SSH；缺省进入交互菜单选择。
@@ -36,6 +39,7 @@
 
 param(
     [string]$Subnet,
+    [string]$Interface,
     [string]$Protocol,
     [int[]]$Ports = @(),
     [int]$TimeoutMs = 1500,
@@ -65,38 +69,102 @@ function Get-PrefixLength([int64]$maskU) {
     return $len
 }
 
-function Get-ActiveIPv4 {
+function Get-ActiveIPv4List {
+    # 返回全部候选网卡，每项 { Name, Address, PrefixLen, State }（仅已连接/up、非 loopback、非 linklocal）
+    $result = New-Object System.Collections.Generic.List[object]
     try {
         $interfaces = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()
-        $candidates = New-Object System.Collections.Generic.List[object]
         foreach ($iface in $interfaces) {
-            if ($iface.OperationalStatus -ne [System.Net.NetworkInformation.OperationalStatus]::Up) { continue }
+            $up = ($iface.OperationalStatus -eq [System.Net.NetworkInformation.OperationalStatus]::Up)
+            if (-not $up) { continue }
             $props = $iface.GetIPProperties()
-            if (-not $props -or $props.GatewayAddresses.Count -eq 0) { continue }
+            if (-not $props) { continue }
             foreach ($ua in $props.UnicastAddresses) {
                 if ($ua.Address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) { continue }
                 $ip = $ua.Address.ToString()
                 if ($ip -like '169.254.*' -or $ip -like '127.*') { continue }
                 $prefix = $ua.PrefixLength
                 if (-not $prefix -or $prefix -lt 1) { $prefix = 24 }
-                $candidates.Add([pscustomobject]@{ Address = $ip; PrefixLen = [int]$prefix })
+                $result.Add([pscustomobject]@{
+                    Name      = $iface.Name
+                    Address   = $ip
+                    PrefixLen = [int]$prefix
+                    State     = $true
+                })
             }
         }
-        if ($candidates.Count -gt 0) {
-            return $candidates[0]
-        }
     } catch { }
+    if ($result.Count -gt 0) {
+        return $result.ToArray()
+    }
 
+    # ipconfig 回退
     $out = (ipconfig | Out-String)
-    $m = [regex]::Match($out, 'IPv4[^\r\n]*?(\d{1,3}(?:\.\d{1,3}){3})')
-    if ($m.Success) {
+    $blocks = [regex]::Split($out, '\r?\n(?=\S)')
+    foreach ($blk in $blocks) {
+        $name = [regex]::Match($blk, '(?:以太网|Ethernet|无线局域网|Wireless|本地连接|adapter|适配器)[^\r\n]*').Value.Trim()
+        if (-not $name) { $name = '?' }
+        $m = [regex]::Match($blk, 'IPv4[^\r\n]*?(\d{1,3}(?:\.\d{1,3}){3})')
+        if (-not $m.Success) { continue }
         $ip = $m.Groups[1].Value
+        if ($ip -like '169.254.*' -or $ip -like '127.*') { continue }
         $prefix = 24
-        $sm = [regex]::Match($out, '(?:Subnet|サブネット|子网|掩码|Mask)[^\r\n]*?(\d{1,3}(?:\.\d{1,3}){3})')
+        $sm = [regex]::Match($blk, '(?:Subnet|サブネット|子网|掩码|Mask)[^\r\n]*?(\d{1,3}(?:\.\d{1,3}){3})')
         if ($sm.Success) {
             $prefix = Get-PrefixLength (Get-IPUInt $sm.Groups[1].Value)
         }
-        return [pscustomobject]@{ Address = $ip; PrefixLen = $prefix }
+        $state = ($blk -notmatch '(?i)Media disconnected|媒体断开|メディア')
+        $result.Add([pscustomobject]@{
+            Name      = $name
+            Address   = $ip
+            PrefixLen = [int]$prefix
+            State     = $state
+        })
+    }
+    if ($result.Count -gt 0) {
+        return $result.ToArray()
+    }
+    return $null
+}
+
+function Get-NicStateLabel([bool]$state) {
+    if ($state) { return '已连接' }
+    return '未连接'
+}
+
+function Resolve-Interface([string]$key, [object[]]$candidates) {
+    if (-not $key) { return $null }
+    $k = $key.Trim()
+    foreach ($c in $candidates) {
+        if ($c.Name -eq $k -or $c.Address -eq $k) { return $c }
+    }
+    return $null
+}
+
+function Show-NicMenu([object[]]$candidates) {
+    if (-not $candidates -or $candidates.Count -eq 0) { return $null }
+    while ($true) {
+        Write-Host ('[输入] 请选择要检测的网卡 [1 - {0} / q 取消]:' -f $candidates.Count) -ForegroundColor Cyan
+        for ($i = 0; $i -lt $candidates.Count; $i++) {
+            Write-Host ('  {0,2}. {1,-12} {2}/{3}  [{4}]' -f ($i + 1), $candidates[$i].Name, $candidates[$i].Address, $candidates[$i].PrefixLen, (Get-NicStateLabel $candidates[$i].State))
+        }
+        Write-Host ''
+        $choice = Read-Host ('[输入] 请输入选项数字 [1 - {0} / q 取消] 然后按回车' -f $candidates.Count)
+        if ($choice -match '^[qQ]$') { return $null }
+        $n = 0
+        if ([int]::TryParse($choice, [ref]$n) -and $n -ge 1 -and $n -le $candidates.Count) {
+            return $candidates[$n - 1]
+        }
+        Write-Host ('[错误] 无效输入，请输入 1 - {0} 或 q。' -f $candidates.Count) -ForegroundColor Red
+        Write-Host ''
+    }
+}
+
+function Get-ActiveIPv4 {
+    # 返回首个候选 { Address, PrefixLen }，无法识别返回 $null
+    $list = Get-ActiveIPv4List
+    if ($list -and $list.Count -gt 0) {
+        return $list[0]
     }
     return $null
 }
@@ -548,25 +616,26 @@ function Show-ProtocolMenu([object[]]$registry) {
 # ===== 主流程 =====
 Write-Host '========================================='
 Write-Host '  设备协议检测工具'
-Write-Host '  版本 1.1'
+Write-Host '  版本 1.2'
 Write-Host '========================================='
 Write-Host '[适用场景]'
 Write-Host '需要识别局域网内设备开放的端口与协议服务（HTTP、SSH、FTP、RTSP、RDP 等）时使用。'
 Write-Host ''
 Write-Host '[功能说明]'
-Write-Host '自动识别本机所在网段，扫描存活主机，并按所选协议做端口检测与握手复核，输出每台设备的 IP、MAC 与服务信息。'
+Write-Host '自动识别本机网卡（多网卡时可选择需要检测的网卡），扫描存活主机，并按所选协议做端口检测与握手复核，输出每台设备的 IP、MAC 与服务信息。'
 Write-Host ''
 Write-Host '[操作方式]'
-Write-Host '输入选项数字选择 1 种协议后按回车，输入 q 取消；随后确认扫描参数后自动执行。'
+Write-Host '输入选项数字选择 1 种协议后按回车，输入 q 取消；多网卡时需再选择检测网卡；随后确认扫描参数后自动执行。'
 Write-Host ''
 Write-Host '[执行步骤]'
-Write-Host '1. 识别网段与待扫描主机'
+Write-Host '1. 识别网卡与待扫描主机'
 Write-Host '2. Ping 扫描存活主机'
 Write-Host '3. 检测开放端口'
 Write-Host '4. 协议握手复核'
 Write-Host ''
 Write-Host '[注意事项]'
 Write-Host '- 每次运行仅检测 1 种协议；可用 -Ports 附加原始端口（仅做 TCP 开放检测）。'
+Write-Host '- 多网卡环境可用 -Interface <接口名或IP> 指定网卡，或用 -Subnet 直接指定网段。'
 Write-Host '- 扫描整个网段耗时较长，请耐心等待。'
 Write-Host '- 需在可访问目标网段的网络环境下运行。'
 Write-Host '========================================='
@@ -592,9 +661,10 @@ if (-not $selectedProtocol) {
 
 $extraPorts = @($Ports)
 
-# ---- 收集参数：网段 ----
+# ---- 收集参数：网段 / 网卡 ----
 $localIP = ''
 $prefix = 0
+$nicName = ''
 if ($Subnet) {
     $m = [regex]::Match($Subnet, '^(\d{1,3}(?:\.\d{1,3}){3})/(\d{1,2})$')
     if (-not $m.Success) {
@@ -609,8 +679,8 @@ if ($Subnet) {
     $prefix = [int]$m.Groups[2].Value
 }
 else {
-    $info = Get-ActiveIPv4
-    if (-not $info) {
+    $candidates = @(Get-ActiveIPv4List)
+    if (-not $candidates -or $candidates.Count -eq 0) {
         Write-Host ''
         Write-Host '[错误] 无法自动识别网段，请使用 -Subnet 手动指定，例如 -Subnet 192.168.1.0/24。' -ForegroundColor Red
         Write-Host '[提示] 已取消，未开始扫描。'
@@ -618,8 +688,35 @@ else {
         Read-Host '[结束] 按回车键退出...'
         exit 0
     }
-    $localIP = $info.Address
-    $prefix = $info.PrefixLen
+    $chosen = $null
+    if ($Interface) {
+        $chosen = Resolve-Interface $Interface $candidates
+        if (-not $chosen) {
+            Write-Host ''
+            Write-Host ('[错误] 未找到匹配的网卡: {0}（接口名或 IP）。' -f $Interface) -ForegroundColor Red
+            Write-Host ('[提示] 可用网卡：{0}。' -f (($candidates | ForEach-Object { '{0} ({1})' -f $_.Name, $_.Address }) -join ', '))
+            Write-Host '[提示] 已取消，未开始扫描。'
+            Write-Host ''
+            Read-Host '[结束] 按回车键退出...'
+            exit 0
+        }
+    }
+    elseif ($Host.UI.RawUI -and $Host.Name -notmatch 'NonInteractive|Pipeline') {
+        Write-Host ''
+        $chosen = Show-NicMenu $candidates
+        if (-not $chosen) {
+            Write-Host '[提示] 已取消，未开始扫描。'
+            Write-Host ''
+            Read-Host '[结束] 按回车键退出...'
+            exit 0
+        }
+    }
+    else {
+        $chosen = $candidates[0]
+    }
+    $localIP = $chosen.Address
+    $prefix = $chosen.PrefixLen
+    $nicName = $chosen.Name
 }
 
 $scanPorts = New-Object System.Collections.Generic.List[int]
@@ -631,6 +728,7 @@ $scanPorts = @($scanPorts | Sort-Object -Unique)
 Write-Host ''
 Write-Host '[提示] 扫描参数确认：'
 Write-Host ('  检测协议: {0}（端口: {1}）' -f $selectedProtocol.Name, ($selectedProtocol.Ports -join ','))
+if ($nicName) { Write-Host ('  检测网卡: {0}' -f $nicName) }
 Write-Host ('  扫描网段: {0}/{1}' -f $localIP, $prefix)
 Write-Host ('  检测端口: {0}' -f ($scanPorts -join ','))
 if ($extraPorts.Count -gt 0) { Write-Host ('  附加原始端口: {0}' -f ($extraPorts -join ',')) }
@@ -647,9 +745,9 @@ while ($true) {
     Write-Host '[错误] 无效输入，请输入 y 或 q。'
 }
 
-# ---- 步骤 1/4：识别网段与待扫描主机 ----
+# ---- 步骤 1/4：识别网卡与待扫描主机 ----
 Write-Host ''
-Write-Host '[进度] 步骤 1/4：识别网段与待扫描主机 ...'
+Write-Host '[进度] 步骤 1/4：识别网卡与待扫描主机 ...'
 $hosts = Get-SubnetHosts $localIP $prefix
 $selfU = Get-IPUInt $localIP
 $hosts = @($hosts | Where-Object { (Get-IPUInt $_) -ne $selfU })
